@@ -10,3 +10,5 @@ and enable automatic reloading.
 generate a `requirements.txt` file with `pip freeze` command, 
 add it to your git repository, 
 and let others install dependencies with `pip install -r requirements.txt` command.
+
+A very simple implementation to integrate OpenAI and DingTalk platforms.
