@@ -12,3 +12,5 @@ add it to your git repository,
 and let others install dependencies with `pip install -r requirements.txt` command.
 
 A very simple implementation to integrate OpenAI and DingTalk platforms.
+
+> [DingTalk message format description](https://open.dingtalk.com/document/orgapp/the-use-of-internal-application-robots-in-person-to-person-single-chat)

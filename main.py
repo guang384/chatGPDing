@@ -10,7 +10,6 @@ import base64
 import openai
 import time
 
-
 app = FastAPI()
 
 
@@ -34,7 +33,7 @@ def check_signature(timestamp, sign):
     if SECRET_KEY is None:
         logging.error("Need to set environment variable: DINGTALK_APP_SECRET.")
         raise HTTPException(status_code=401, detail="认证失败")
-    contents = timestamp + "\n" + SECRET_KEY;
+    contents = timestamp + "\n" + SECRET_KEY
     signed = hmacsha256_base64_encode(SECRET_KEY, contents)
     if signed != sign:
         raise HTTPException(status_code=401, detail="认证失败")
@@ -46,17 +45,19 @@ async def root(request: Request):
                     request.headers.get('sign'))
 
     message = await request.json()
-    if message['msgtype']=='audio':
-        print("[{}] sent a message of type 'audio'.  -> {}".format(message['senderNick'], message['content']['recognition']))
-        message['text']={
+
+    if message['msgtype'] == 'audio':
+        print("[{}] sent a message of type 'audio'.  -> {}".format(message['senderNick'],
+                                                                   message['content']['recognition']))
+        message['text'] = {
             "content": message['content']['recognition']
         }
-    elif message['msgtype']!='text':
-        print("[{}] sent a message of type '{}'.  -> {}".format(message['senderNick'], message['msgtype'],message))
+    elif message['msgtype'] != 'text':
+        print("[{}] sent a message of type '{}'.  -> {}".format(message['senderNick'], message['msgtype'], message))
         return {
             "msgtype": "text",
             "text": {
-                "content": "请不要发文字信息意外的其他类型信息，我看不懂。"
+                "content": "请不要发文字信息意外的其他类型信息，我无法理解。"
             }
         }
 
@@ -99,7 +100,7 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
     duration = (end_time - start_time) * 1000
 
     if response.json()['errcode'] == 0:
-        print("[{}]: {}".format(answer['role'], answer['content'].replace("\n", "\n  | ")))
+        print("[{}]: {}".format(model, answer['content'].replace("\n", "\n  | ")))
     else:
         logging.info(response.json())
     print('Request duration:', "{:.3f}".format(duration), 'milliseconds')
