@@ -80,10 +80,13 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
         logging.error("Need to set environment variable: OPENAI_API_KEY.")
         raise HTTPException(status_code=500, detail="认证失败")
 
+    openai_start_time = time.perf_counter()
     completion = openai.ChatCompletion.create(
         model=model,
         messages=messages
     )
+    openai_end_time = time.perf_counter()
+
     answer = completion.to_dict()['choices'][0]['message']
 
     # response to dingtalk
@@ -96,16 +99,18 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
             "content": answer['content']
         }
     }
-    start_time = time.perf_counter()
+
+    dingtalk_start_time = time.perf_counter()
     response = requests.post(url, data=json.dumps(data), headers=headers)
-    end_time = time.perf_counter()
-    duration = (end_time - start_time) * 1000
+    dingtalk_end_time = time.perf_counter()
 
     if response.json()['errcode'] == 0:
         print("[{}]: {}".format(model, answer['content'].replace("\n", "\n  | ")))
     else:
         logging.info(response.json())
-    print('Request duration:', "{:.3f}".format(duration), 'milliseconds')
+    print("Request duration: openai {:.3f} s, dingtalk {:.3f} ms".format(
+        (openai_end_time - openai_start_time),
+        (dingtalk_end_time - dingtalk_start_time) * 1000))
 
 
 if __name__ == '__main__':
