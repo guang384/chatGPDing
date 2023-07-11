@@ -43,7 +43,8 @@ def check_signature(timestamp, sign):
 async def root(request: Request):
     check_signature(request.headers.get('timestamp'),
                     request.headers.get('sign'))
-
+    # receive from dingtalk
+    # https://open.dingtalk.com/document/orgapp/receive-message
     message = await request.json()
 
     if message['msgtype'] == 'audio':
@@ -69,7 +70,7 @@ async def root(request: Request):
     ])
     return {
         "msgtype": "empty"
-    }  # https://open.dingtalk.com/document/orgapp/common-message
+    }
 
 
 async def call_openai(session_webhook, messages, model='gpt-4'):
@@ -86,6 +87,7 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
     answer = completion.to_dict()['choices'][0]['message']
 
     # response to dingtalk
+    # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
     url = session_webhook
     headers = {'Content-Type': 'application/json'}
     data = {
