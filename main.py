@@ -29,14 +29,16 @@ def hmacsha256_base64_encode(key, msg):
 
 
 def check_signature(timestamp, sign):
-    SECRET_KEY = os.getenv("DINGTALK_APP_SECRET")
-    if SECRET_KEY is None:
+    SECRET_KEYS = os.getenv("DINGTALK_APP_SECRET")
+    if SECRET_KEYS is None:
         logging.error("Need to set environment variable: DINGTALK_APP_SECRET.")
         raise HTTPException(status_code=401, detail="认证失败")
-    contents = timestamp + "\n" + SECRET_KEY
-    signed = hmacsha256_base64_encode(SECRET_KEY, contents)
-    if signed != sign:
-        raise HTTPException(status_code=401, detail="认证失败")
+    for SECRET_KEY in SECRET_KEYS.split(','):
+        contents = timestamp + "\n" + SECRET_KEY
+        signed = hmacsha256_base64_encode(SECRET_KEY, contents)
+        if signed == sign:
+            return
+    raise HTTPException(status_code=401, detail="认证失败")
 
 
 @app.post("/")
