@@ -1,16 +1,27 @@
 import hashlib
 import json
 import requests
-
+import traceback
 from fastapi import FastAPI, Request, HTTPException
 import os
 import logging
 import hmac
 import base64
-import openai
+from openai import OpenAI
 import time
 
 app = FastAPI()
+
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if openai_api_key is None:
+    logging.error("Need to set environment variable: OPENAI_API_KEY.")
+    raise HTTPException(status_code=500, detail="Need to set environment variable: OPENAI_API_KEY.")
+
+openai_client = OpenAI(
+    api_key=os.environ['OPENAI_API_KEY'],  # this is also the default, it can be omitted
+)
+
+total_token_usage = 0
 
 
 @app.on_event("startup")
@@ -69,50 +80,73 @@ async def root(request: Request):
     await call_openai(message['sessionWebhook'], [
         {"role": "system", "content": "You are a helpful assistant. Answer in Chinese unless specified otherwise."},
         {"role": "user", "content": message['text']['content']}
-    ])
+    ], 'gpt-4-1106-preview')
+    # gpt-4-1106-preview
+
     return {
         "msgtype": "empty"
     }
 
 
 async def call_openai(session_webhook, messages, model='gpt-4'):
-    # call openai
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    if openai.api_key is None:
-        logging.error("Need to set environment variable: OPENAI_API_KEY.")
-        raise HTTPException(status_code=500, detail="认证失败")
-
-    openai_start_time = time.perf_counter()
-    completion = openai.ChatCompletion.create(
-        model=model,
-        messages=messages
-    )
-    openai_end_time = time.perf_counter()
-
-    answer = completion.to_dict()['choices'][0]['message']
-
-    # response to dingtalk
-    # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
+    global total_token_usage
+    # prepare dingtalk
     url = session_webhook
     headers = {'Content-Type': 'application/json'}
-    data = {
-        "msgtype": "text",
-        "text": {
-            "content": answer['content']
-        }
-    }
+    usage = None
+    answer = ''
 
+    # call openai
+    openai_start_time = time.perf_counter()
+    try:
+        completion = await openai_client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+        # organize responses
+        answer = completion.choices[0].message.content
+        usage = dict(completion).get('usage')
+        total_token_usage += usage.total_tokens
+
+        # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
+        data = {
+            "msgtype": "text",
+            "text": {
+                "content": answer
+            }
+        }
+    except Exception as e:
+        logging.error(e)
+        # traceback.print_exc()
+        data = {
+            "msgtype": "markdown",
+            "markdown": {
+                "title": "我错了 orz",
+                "text": "<font color=silver>完，出错啦！暂时没法用咯…… 等会再试试吧 [傻笑] <br />（%s）" % e.args
+            }
+        }
+        answer = data["markdown"]["title"]
+    openai_end_time = time.perf_counter()
+
+    # response to dingtalk
     dingtalk_start_time = time.perf_counter()
     response = requests.post(url, data=json.dumps(data), headers=headers)
     dingtalk_end_time = time.perf_counter()
 
+    # logging
     if response.json()['errcode'] == 0:
-        print("[{}]: {}".format(model, answer['content'].replace("\n", "\n  | ")))
+        print("[{}]: {}".format(model, answer.replace("\n", "\n  | ")))
     else:
         logging.info(response.json())
-    print("Request duration: openai {:.3f} s, dingtalk {:.3f} ms".format(
-        (openai_end_time - openai_start_time),
-        (dingtalk_end_time - dingtalk_start_time) * 1000))
+    print(
+        "Request duration: openai {:.3f} s, dingtalk {:.3f} ms. {}. Token statistics: {}"
+            .format(
+            (openai_end_time - openai_start_time),
+            (dingtalk_end_time - dingtalk_start_time) * 1000,
+            usage,
+            total_token_usage
+        )
+    )
 
 
 if __name__ == '__main__':
