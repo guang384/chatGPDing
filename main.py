@@ -99,7 +99,7 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
     # call openai
     openai_start_time = time.perf_counter()
     try:
-        completion = await openai_client.chat.completions.create(
+        completion = openai_client.chat.completions.create(
             model=model,
             messages=messages
         )
