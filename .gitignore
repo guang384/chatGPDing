@@ -4,6 +4,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+counter*.txt
+token_usage_*.txt
 # C extensions
 *.so
 

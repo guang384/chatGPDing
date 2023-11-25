@@ -9,6 +9,7 @@ import hmac
 import base64
 from openai import OpenAI
 import time
+from persistent_accumulator import PersistentAccumulator
 
 app = FastAPI()
 
@@ -21,7 +22,8 @@ openai_client = OpenAI(
     api_key=os.environ['OPENAI_API_KEY'],  # this is also the default, it can be omitted
 )
 
-total_token_usage = 0
+# use local file to persistent token usage
+token_usage_accumulator = PersistentAccumulator(prefix='token_usage')
 
 
 @app.on_event("startup")
@@ -29,7 +31,7 @@ async def startup_event():
     logging.basicConfig(level=logging.INFO)
 
 
-def hmacsha256_base64_encode(key, msg):
+def hmac_sha256_base64_encode(key, msg):
     hmac_key = bytes(key, 'utf-8')
     hmac_msg = bytes(msg, 'utf-8')
 
@@ -46,7 +48,7 @@ def check_signature(timestamp, sign):
         raise HTTPException(status_code=401, detail="认证失败")
     for SECRET_KEY in SECRET_KEYS.split(','):
         contents = timestamp + "\n" + SECRET_KEY
-        signed = hmacsha256_base64_encode(SECRET_KEY, contents)
+        signed = hmac_sha256_base64_encode(SECRET_KEY, contents)
         if signed == sign:
             return
     raise HTTPException(status_code=401, detail="认证失败")
@@ -89,7 +91,6 @@ async def root(request: Request):
 
 
 async def call_openai(session_webhook, messages, model='gpt-4'):
-    global total_token_usage
     # prepare dingtalk
     url = session_webhook
     headers = {'Content-Type': 'application/json'}
@@ -106,7 +107,7 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
         # organize responses
         answer = completion.choices[0].message.content
         usage = dict(completion).get('usage')
-        total_token_usage += usage.total_tokens
+        token_usage_accumulator.add(usage.total_tokens)
 
         # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
         data = {
@@ -144,7 +145,7 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
             (openai_end_time - openai_start_time),
             (dingtalk_end_time - dingtalk_start_time) * 1000,
             usage,
-            total_token_usage
+            token_usage_accumulator.get_current_total()
         )
     )
 
