@@ -29,6 +29,10 @@ class DingtalkClient:
             self.rewrite_host = os.environ.get("REWRITE_DINGTALK_HOST")
         if rewrite_pathname is None:
             self.rewrite_pathname = os.getenv("REWRITE_DINGTALK_PATHNAME")
+        if self.rewrite_host is not None:
+            print("rewrite http://oapi.dingtalk.com/robot/sendBySession to http://%s/%s" % (
+                self.rewrite_host, self.rewrite_pathname))
+
         if secret_keys is None:
             self.secret_keys = os.getenv("DINGTALK_APP_SECRET")
         if self.secret_keys is None:

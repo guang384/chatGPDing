@@ -26,3 +26,27 @@ Use virtualenv
 > deactivate
 > 
 
+Start Shell
+
+```shell
+#!/bin/bash
+
+cd /home/cui/chatGPDing
+
+export OPENAI_API_KEY=sk-HY*******R
+export DINGTALK_APP_SECRET=ljnV62W*********3I_OyYsHrfOk,pHGW******V8qPo0d9
+export REWRITE_DINGTALK_HOST=some.domain
+export REWRITE_DINGTALK_PATHNAME=hellotalk
+export OPENAI_BASE_URL=https://some.domain/hellogpt
+export SERVER_PORT=8035
+
+source venv/bin/activate && python main.py
+```
+
+Can use [Cloudflare pages functions](https://developers.cloudflare.com/pages/functions/)
+
+> rewrite http://oapi.dingtalk.com/robot/sendBySession to http://some.domain/hellotalk
+> 
+> rewrite https://api.openai.com/v1 to https://some.domain/hellogpt
+> 
+

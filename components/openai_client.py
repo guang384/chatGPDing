@@ -23,6 +23,9 @@ class OpenaiClient:
             logging.error("Need to set environment variable: OPENAI_API_KEY.")
             raise HTTPException(status_code=500, detail="Need to set environment variable: OPENAI_API_KEY.")
 
+        if os.getenv("OPENAI_BASE_URL") is not None:
+            print("rewrite https://api.openai.com/v1 to %s" % (os.getenv("OPENAI_BASE_URL") ))
+
         self.openai = OpenAI(
             api_key=self.api_key
         )
