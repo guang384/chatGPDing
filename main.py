@@ -4,7 +4,7 @@ import time
 from fastapi import FastAPI, Request
 from openai.types.chat import ChatCompletion
 
-from components import OpenaiClient,DingtalkClient,PersistentAccumulator
+from components import OpenaiClient, DingtalkClient, PersistentAccumulator
 
 logging.basicConfig(level=logging.WARN)
 
@@ -244,5 +244,11 @@ async def call_openai(session_webhook, messages, model='gpt-4'):
 
 if __name__ == '__main__':
     import uvicorn
+    import os
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = 8000
+
+    if os.getenv("SERVER_PORT") is not None:
+        port = int(os.getenv("SERVER_PORT"))
+
+    uvicorn.run(app, host="0.0.0.0", port=port)
