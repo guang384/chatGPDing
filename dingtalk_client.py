@@ -16,9 +16,9 @@ logging.basicConfig(level=logging.WARN)
 class DingtalkClient:
     def __init__(
             self,
-            rewrite_host: str | None = None,
-            rewrite_pathname: str | None = None,
-            secret_keys: str | None = None
+            rewrite_host,
+            rewrite_pathname,
+            secret_keys
 
     ):
         self.rewrite_host = rewrite_host
