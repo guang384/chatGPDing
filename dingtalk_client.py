@@ -33,7 +33,7 @@ class DingtalkClient:
             self.secret_keys = os.getenv("DINGTALK_APP_SECRET")
         if self.secret_keys is None:
             logging.error("Need to set environment variable: DINGTALK_APP_SECRET.")
-            raise HTTPException(status_code=401, detail="没有设置应用密钥")
+            raise ValueError("You need to set a DingTalk App Secret")
 
     def _rewrite_session_webhook(self, session_webhook):
         if self.rewrite_host is None:
@@ -56,7 +56,7 @@ class DingtalkClient:
             if signed == sign:
                 return
         print("DINGTALK_APP_SECRET not right.", secret_key)
-        raise HTTPException(status_code=401, detail="认证失败")
+        raise HTTPException(status_code=401, detail="DingTalk signature verification failed.")
 
     async def send_markdown(self, title, text, session_webhook):
         url = session_webhook
