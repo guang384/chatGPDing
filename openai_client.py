@@ -43,7 +43,7 @@ class OpenaiClient:
         # calculate this yourself using tiktoken.
         self.if_stream = if_stream
 
-    def chat_completions(self, messages) -> ChatCompletion | Stream[ChatCompletionChunk]:
+    def chat_completions(self, messages):  # -> ChatCompletion | Stream[ChatCompletionChunk]:
         return self.openai.chat.completions.create(
             model=self.chat_model,
             messages=messages,
