@@ -16,9 +16,9 @@ logging.basicConfig(level=logging.WARN)
 class DingtalkClient:
     def __init__(
             self,
-            rewrite_host,
-            rewrite_pathname,
-            secret_keys
+            rewrite_host=None,
+            rewrite_pathname=None,
+            secret_keys=None
 
     ):
         self.rewrite_host = rewrite_host
@@ -40,7 +40,7 @@ class DingtalkClient:
             return session_webhook
         return urlunparse(urlparse(session_webhook)._replace(netloc=self.rewrite_host, path=self.rewrite_pathname))
 
-    def _hmac_sha256_base64_encode(self,key, msg):
+    def _hmac_sha256_base64_encode(self, key, msg):
         hmac_key = bytes(key, 'utf-8')
         hmac_msg = bytes(msg, 'utf-8')
 
