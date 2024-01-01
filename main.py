@@ -1,12 +1,10 @@
 import traceback
-from fastapi import FastAPI, Request
 import logging
 import time
-
-from openai_client import OpenaiClient
-from dingtalk_client import DingtalkClient
-from persistent_accumulator import PersistentAccumulator
+from fastapi import FastAPI, Request
 from openai.types.chat import ChatCompletion
+
+from components import OpenaiClient,DingtalkClient,PersistentAccumulator
 
 logging.basicConfig(level=logging.WARN)
 
