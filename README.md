@@ -38,6 +38,7 @@ export DINGTALK_APP_SECRET=ljnV62W*********3I_OyYsHrfOk,pHGW******V8qPo0d9
 export REWRITE_DINGTALK_HOST=some.domain
 export REWRITE_DINGTALK_PATHNAME=hellotalk
 export OPENAI_BASE_URL=https://some.domain/hellogpt
+export OPENAI_CHAT_MODEL=gpt-4-1106-preview
 export SERVER_PORT=8035
 
 source venv/bin/activate && python main.py

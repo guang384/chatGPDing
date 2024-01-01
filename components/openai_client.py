@@ -12,7 +12,7 @@ class OpenaiClient:
     def __init__(
             self,
             api_key=None,
-            chat_model='gpt-4-1106-preview',
+            chat_model=None,
             tiktoken_encoding_tokens_model='gpt-4-0613',
             if_stream=False
     ):
@@ -22,6 +22,7 @@ class OpenaiClient:
         if self.api_key is None:
             logging.error("Need to set environment variable: OPENAI_API_KEY.")
             raise HTTPException(status_code=500, detail="Need to set environment variable: OPENAI_API_KEY.")
+
 
         if os.getenv("OPENAI_BASE_URL") is not None:
             print("rewrite https://api.openai.com/v1 to %s" % (os.getenv("OPENAI_BASE_URL") ))
@@ -40,6 +41,11 @@ class OpenaiClient:
         # gpt-4-1106-preview
         # gpt-3.5-turbo
         self.chat_model = chat_model
+        if chat_model is None:
+            self.chat_model = os.getenv("OPENAI_CHAT_MODEL")
+        if self.chat_model is None:
+            self.chat_model = 'gpt-4'
+        print("Openai model choice : ", self.chat_model)
 
         # Another small drawback of streaming responses is that the response no longer includes the usage field
         # to tell you how many tokens were consumed. After receiving and combining all of the responses, you can
