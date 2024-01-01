@@ -14,3 +14,15 @@ and let others install dependencies with `pip install -r requirements.txt` comma
 A very simple implementation to integrate OpenAI and DingTalk platforms.
 
 > [DingTalk message format description](https://open.dingtalk.com/document/orgapp/the-use-of-internal-application-robots-in-person-to-person-single-chat)
+
+
+Use virtualenv
+> pip3 install virtualenv
+> 
+> virtualenv venv
+> 
+> source venv/bin/activate
+> 
+> deactivate
+> 
+
