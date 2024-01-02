@@ -14,13 +14,13 @@ logging.basicConfig(level=logging.WARN)
 
 
 class DingtalkMessagesHandler:
-    def __init__(self, worker_nums=5):
+    def __init__(self, if_stream=True, number_workers=5):
         self.queue = Queue()
         self.dingtalk = DingtalkClient()
-        self.openai = OpenaiClient(if_stream=True)
+        self.openai = OpenaiClient(if_stream=if_stream)
         self.stopped = False
         self.processing = {}
-        self.worker_nums = worker_nums
+        self.number_workers = number_workers
 
     def is_session_webhook_in_processing(self, session_webhook):
         return session_webhook in self.processing
@@ -33,13 +33,13 @@ class DingtalkMessagesHandler:
         self.processing[request['session_webhook']] = request['messages']
 
     def start_workers(self):
-        for i in range(self.worker_nums):
+        for i in range(self.number_workers):
             worker = threading.Thread(target=self.process_request, args=(i,))
             worker.start()
 
     def stop_workers(self):
         self.stopped = True
-        for i in range(self.worker_nums):
+        for i in range(self.number_workers):
             self.queue.put({})
             time.sleep(0.001)
 
@@ -158,18 +158,21 @@ def truncate_string(s):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # The logic here is executed after startup. The logic here is executed before stopping.
+    print('DingtalkMessagesHandler workers Starting up.')
+    handler.start_workers()
 
     yield
 
     # The logic here is executed before stopping.
+    print('DingtalkMessagesHandler workers Shutting down.')
     handler.stop_workers()
-    print('DingtalkMessagesHandler Shutting down')
 
+
+handler = DingtalkMessagesHandler(
+    if_stream=True,
+    number_workers=8)
 
 app = FastAPI(lifespan=lifespan)
-
-handler = DingtalkMessagesHandler(8)
-handler.start_workers()
 
 
 @app.post("/")

@@ -11,10 +11,10 @@ logging.basicConfig(level=logging.WARN)
 class OpenaiClient:
     def __init__(
             self,
+            if_stream=False,
             api_key=None,
             chat_model=None,
-            tiktoken_encoding_tokens_model='gpt-4-0613',
-            if_stream=False
+            tiktoken_encoding_tokens_model='gpt-4-0613'
     ):
         self.api_key = api_key
         if api_key is None:
