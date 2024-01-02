@@ -41,8 +41,7 @@ export OPENAI_BASE_URL=https://some.domain/hellogpt
 export OPENAI_CHAT_MODEL=gpt-4-1106-preview
 export SERVER_PORT=8035
 
-# source venv/bin/activate && python main.py
-source venv/bin/activate && uvicorn main:app --workers=4
+source venv/bin/activate && python main.py
 
 ```
 

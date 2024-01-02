@@ -13,6 +13,16 @@ import requests
 logging.basicConfig(level=logging.WARN)
 
 
+def _hmac_sha256_base64_encode(key, msg):
+    hmac_key = bytes(key, 'utf-8')
+    hmac_msg = bytes(msg, 'utf-8')
+
+    hmac_hash = hmac.new(hmac_key, hmac_msg, hashlib.sha256).digest()
+    base64_encoded = base64.b64encode(hmac_hash).decode('utf-8')
+
+    return base64_encoded
+
+
 class DingtalkClient:
     def __init__(
             self,
@@ -44,25 +54,16 @@ class DingtalkClient:
             return session_webhook
         return urlunparse(urlparse(session_webhook)._replace(netloc=self.rewrite_host, path=self.rewrite_pathname))
 
-    def _hmac_sha256_base64_encode(self, key, msg):
-        hmac_key = bytes(key, 'utf-8')
-        hmac_msg = bytes(msg, 'utf-8')
-
-        hmac_hash = hmac.new(hmac_key, hmac_msg, hashlib.sha256).digest()
-        base64_encoded = base64.b64encode(hmac_hash).decode('utf-8')
-
-        return base64_encoded
-
     def check_signature(self, timestamp, sign):
         for secret_key in self.secret_keys.split(','):
             contents = timestamp + "\n" + secret_key
-            signed = self._hmac_sha256_base64_encode(secret_key, contents)
+            signed = _hmac_sha256_base64_encode(secret_key, contents)
             if signed == sign:
                 return
         print("DINGTALK_APP_SECRET not right.", secret_key)
         raise HTTPException(status_code=401, detail="DingTalk signature verification failed.")
 
-    async def send_markdown(self, title, text, session_webhook):
+    def send_markdown(self, title, text, session_webhook):
         url = session_webhook
         data = {
             "msgtype": "markdown",
@@ -71,9 +72,9 @@ class DingtalkClient:
                 "text": text
             }
         }
-        await self._send_to_dingtalk_server(data, url)
+        self._send_to_dingtalk_server(data, url)
 
-    async def send_text(self, answer, session_webhook):
+    def send_text(self, answer, session_webhook):
         if len(answer.strip()) > 0:
             url = session_webhook
             data = {
@@ -82,9 +83,9 @@ class DingtalkClient:
                     "content": answer.strip()
                 }
             }
-            await self._send_to_dingtalk_server(data, url)
+            self._send_to_dingtalk_server(data, url)
 
-    async def _send_to_dingtalk_server(self, data, url):
+    def _send_to_dingtalk_server(self, data, url):
         # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
         url = self._rewrite_session_webhook(url)
         url = self._rewrite_session_webhook(url)
