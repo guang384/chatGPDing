@@ -3,7 +3,7 @@ A ROBOT OF DINGDING TALK TO CHATGPT
 
 
 > The command `uvicorn main:app --reload` can be used to start a Uvicorn server in the current project 
-and enable automatic reloading.
+and enable automatic reloading. ( Maybe you need to first run `sudo apt install uvicorn`. )
 
 
 > To share project dependencies, 
@@ -41,7 +41,9 @@ export OPENAI_BASE_URL=https://some.domain/hellogpt
 export OPENAI_CHAT_MODEL=gpt-4-1106-preview
 export SERVER_PORT=8035
 
-source venv/bin/activate && python main.py
+# source venv/bin/activate && python main.py
+source venv/bin/activate && uvicorn main:app --workers=4
+
 ```
 
 Can use [Cloudflare pages functions](https://developers.cloudflare.com/pages/functions/)

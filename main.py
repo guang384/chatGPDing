@@ -4,7 +4,7 @@ import time
 from fastapi import FastAPI, Request
 from openai.types.chat import ChatCompletion
 
-from components import OpenaiClient, DingtalkClient, PersistentAccumulator
+from components import OpenaiClient, DingtalkClient
 
 logging.basicConfig(level=logging.WARN)
 
@@ -13,9 +13,6 @@ app = FastAPI()
 dingtalk = DingtalkClient()
 
 openai = OpenaiClient(if_stream=True)
-
-# use local file to persistent token usage
-token_usage_accumulator = PersistentAccumulator(prefix='token_usage_' + openai.chat_model)
 
 
 @app.post("/")
@@ -85,13 +82,13 @@ async def call_openai(session_webhook, messages):
             # organize responses
             answer = completion.choices[0].message.content
             usage = dict(completion).get('usage')
-            token_usage_accumulator.add(usage.total_tokens)
+            message_bottom = "\n\n( --- Used up " + str(usage.total_tokens) + " tokens. --- )"
 
-            await dingtalk.send_text(answer, session_webhook)
+            await dingtalk.send_text(answer.rstrip()+message_bottom, session_webhook)
             print("Estimated Completion Tokens:", openai.num_tokens_from_string(answer))
             print("[{}]: {}".format(openai.chat_model, answer.replace("\n", "\n  | ")))
 
-            print("{}. Token statistics: {}".format(usage, token_usage_accumulator.get_current_total()))
+            print("Token usage: {}.".format(usage))
         else:  # Stream[ChatCompletionChunk]
             print("Message received start at {:.3f} s.".format((end_time - start_time)))
 
@@ -130,19 +127,13 @@ async def call_openai(session_webhook, messages):
                 print("[{}]: {}".format(openai.chat_model, answer.rstrip().replace("\n", "\n  | ")))
                 answer_tokens = openai.num_tokens_from_string(answer)
                 message_bottom = "\n\n( --- Used up " + str(prompt_tokens + usage + answer_tokens) + " tokens. --- )"
-                await dingtalk.send_text(
-                    answer.rstrip() + message_bottom,
-                    session_webhook)
-
+                await dingtalk.send_text(answer.rstrip() + message_bottom, session_webhook)
                 usage += answer_tokens
 
             end_time = time.perf_counter()
 
-            token_usage_accumulator.add(prompt_tokens)
-            token_usage_accumulator.add(usage)
-
-            print("Request duration: openai {:.3f} s. Estimated completion Tokens: {}. Token statistics: {}".format(
-                (end_time - start_time), str(prompt_tokens + usage), token_usage_accumulator.get_current_total()))
+            print("Request duration: openai {:.3f} s. Estimated completion Tokens: {}.".format(
+                (end_time - start_time), str(prompt_tokens + usage)))
 
     except Exception as e:
         end_time = time.perf_counter()
