@@ -15,7 +15,7 @@ dingtalk = DingtalkClient()
 openai = OpenaiClient(if_stream=True)
 
 # use local file to persistent token usage
-token_usage_accumulator = PersistentAccumulator(prefix='token_usage_'+openai.chat_model)
+token_usage_accumulator = PersistentAccumulator(prefix='token_usage_' + openai.chat_model)
 
 
 @app.post("/")
@@ -52,7 +52,25 @@ async def root(request: Request):
         {"role": "user", "content": message['text']['content']}
     ]
 
+    # todo: 并发控制-加锁
+    #     return {
+    #         "msgtype": "markdown",
+    #         "markdown": {
+    #             "title": "[忙疯了]好快...",
+    #             "text": "<font color=silver>你发的太快了…… 有点处理不过来了呢…… 我还没回完你的上一条呢 [尴尬]"
+    #         }
+    #     }
+
     # call openai
+    await call_openai(session_webhook, messages)
+
+    # Do not reply now, reply later using webhook method.
+    return {
+        "msgtype": "empty"
+    }
+
+
+async def call_openai(session_webhook, messages):
     prompt_tokens = openai.num_tokens_from_messages(messages)
     print("Estimated Prompt Tokens:", prompt_tokens)
 
@@ -110,8 +128,13 @@ async def root(request: Request):
 
             if len(answer) > 0:
                 print("[{}]: {}".format(openai.chat_model, answer.rstrip().replace("\n", "\n  | ")))
-                await dingtalk.send_text(answer + "\n(完)", session_webhook)
-                usage += openai.num_tokens_from_string(answer)
+                answer_tokens = openai.num_tokens_from_string(answer)
+                message_bottom = "\n\n( --- Used up " + str(prompt_tokens + usage + answer_tokens) + " tokens. --- )"
+                await dingtalk.send_text(
+                    answer.rstrip() + message_bottom,
+                    session_webhook)
+
+                usage += answer_tokens
 
             end_time = time.perf_counter()
 
@@ -119,7 +142,7 @@ async def root(request: Request):
             token_usage_accumulator.add(usage)
 
             print("Request duration: openai {:.3f} s. Estimated completion Tokens: {}. Token statistics: {}".format(
-                (end_time - start_time), usage, token_usage_accumulator.get_current_total()))
+                (end_time - start_time), str(prompt_tokens + usage), token_usage_accumulator.get_current_total()))
 
     except Exception as e:
         end_time = time.perf_counter()
@@ -132,9 +155,6 @@ async def root(request: Request):
             "<font color=silver>完，出错啦！暂时没法用咯…… 等会再试试吧 [傻笑] <br />（%s）" % e.args,
             session_webhook)
 
-    return {
-        "msgtype": "empty"
-    }
 
 if __name__ == '__main__':
     import uvicorn
