@@ -87,6 +87,7 @@ class DingtalkMessagesHandler:
                 answer = ''
                 usage = 0
                 if_in_block = False
+                backticks_count = 0
                 for chunk in completion:
                     chunk_message = chunk.choices[0].delta.content
                     if chunk_message is not None and len(chunk_message) > 0 \
@@ -96,7 +97,6 @@ class DingtalkMessagesHandler:
                             continue
                         if '```' in answer:
                             content = ''
-                            backticks_count = 0
 
                             lines = answer.rstrip().splitlines()  # to lines
                             last_line = lines[-1]
