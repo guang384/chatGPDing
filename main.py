@@ -105,10 +105,10 @@ class DingtalkMessagesHandler:
                                 if_block_start, backticks_count = is_valid_md_code_start(last_line)
                                 if if_block_start:
                                     content = answer_without_last_line
-                                    answer = last_line+'\n'
+                                    answer = last_line + '\n'
                                     if_in_block = True
                             else:
-                                if is_valid_md_code_end(last_line,backticks_count):
+                                if is_valid_md_code_end(last_line, backticks_count):
                                     content = answer
                                     answer = ''
                                     if_in_block = False
@@ -123,7 +123,8 @@ class DingtalkMessagesHandler:
                                     print("Send answer to dingtalk Failed", e.args)
                                     continue
                                 usage += self.openai.num_tokens_from_string(content)
-                        elif answer.endswith('\n\n') and not if_in_block:
+
+                        if answer.endswith('\n\n') and not if_in_block and len(answer) > 100:
                             print("[{}]->[{}]: {}".format(
                                 self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
                             try:
@@ -181,7 +182,7 @@ def is_valid_md_code_start(line) -> (bool, int):
 
 
 def is_valid_md_code_end(line, backticks_count) -> bool:
-    if backticks_count<3:
+    if backticks_count < 3:
         backticks_count = 3
     if not line:  # if empty line
         return False

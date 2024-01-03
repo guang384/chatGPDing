@@ -15,9 +15,6 @@ A very simple implementation to integrate OpenAI and DingTalk platforms.
 
 > [DingTalk message format description](https://open.dingtalk.com/document/orgapp/the-use-of-internal-application-robots-in-person-to-person-single-chat)
 
-```````python
-12
-   ````````                  
 
 Use virtualenv
 > pip3 install virtualenv
