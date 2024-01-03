@@ -94,19 +94,25 @@ class DingtalkMessagesHandler:
                         answer += str(chunk_message)
                         if answer[-1] != '\n':
                             continue
-                        if answer.rstrip().endswith('```'):
+                        if '```' in answer:
+                            content = ''
+                            backticks_count = 0
+
                             lines = answer.rstrip().splitlines()  # to lines
                             last_line = lines[-1]
                             answer_without_last_line = "\n".join(lines[:-1])
-                            if last_line.strip() == "```":
-                                if if_in_block:
+                            if not if_in_block:
+                                if_block_start, backticks_count = is_valid_md_code_start(last_line)
+                                if if_block_start:
+                                    content = answer_without_last_line
+                                    answer = last_line+'\n'
+                                    if_in_block = True
+                            else:
+                                if is_valid_md_code_end(last_line,backticks_count):
                                     content = answer
                                     answer = ''
                                     if_in_block = False
-                                else:
-                                    content = answer_without_last_line
-                                    answer = last_line
-                                    if_in_block = True
+                            if len(content.strip()) > 0:
                                 print("[{}]->[{}]: {}".format(
                                     self.openai.chat_model,
                                     send_to,
@@ -155,6 +161,40 @@ class DingtalkMessagesHandler:
 
     def check_signature(self, timestamp, sign):
         return self.dingtalk.check_signature(timestamp, sign)
+
+
+def is_valid_md_code_start(line) -> (bool, int):
+    if not line:  # if empty line
+        return False, 0
+    if not line.lstrip(' ').startswith('```'):
+        return False, 1
+    if len(line) - len(line.lstrip(' ')) > 3:
+        return False, 2
+    first_not_backticks_pos = len(line.lstrip())
+    for i, c in enumerate(line.lstrip()):
+        if c != '`':
+            first_not_backticks_pos = i
+            break
+    if "`" in line.lstrip()[first_not_backticks_pos:]:
+        return False, 3
+    return True, first_not_backticks_pos
+
+
+def is_valid_md_code_end(line, backticks_count) -> bool:
+    if backticks_count<3:
+        backticks_count = 3
+    if not line:  # if empty line
+        return False
+    if not line.lstrip(' ').startswith('```'):
+        return False
+    if len(line) - len(line.lstrip(' ')) > 3:
+        return False
+    for i, c in enumerate(line.strip()):
+        if c != '`':
+            return False
+    if len(line.strip()) < backticks_count:
+        return False
+    return True
 
 
 def message_bottom(usage, model):
