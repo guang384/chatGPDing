@@ -74,7 +74,7 @@ class DingtalkMessagesHandler:
                 # organize responses
                 answer = completion.choices[0].message.content
                 self.dingtalk.send_text(
-                    answer.rstrip() + message_bottom(usage.total_tokens,self.openai.chat_model),
+                    answer.rstrip() + message_bottom(usage.total_tokens, self.openai.chat_model),
                     session_webhook)
                 print("Estimated Completion Tokens:", self.openai.num_tokens_from_string(answer))
                 print("[{}]->[{}]: {}".format(self.openai.chat_model, send_to, answer.replace("\n", "\n  | ")))
@@ -92,34 +92,29 @@ class DingtalkMessagesHandler:
                     if chunk_message is not None and len(chunk_message) > 0 \
                             and len(answer.strip()) + len(chunk_message.strip()) > 0:
                         answer += str(chunk_message)
-                        if answer.rstrip().endswith('```') and not if_in_block:
+                        if answer.rstrip().endswith('```'):
                             lines = answer.rstrip().splitlines()  # to lines
                             last_line = lines[-1]
                             answer_without_last_line = "\n".join(lines[:-1])
                             if last_line.strip() == "```":
+                                if if_in_block:
+                                    content = answer
+                                    answer = ''
+                                    if_in_block = False
+                                else:
+                                    content = answer_without_last_line
+                                    answer = last_line
+                                    if_in_block = True
                                 print("[{}]->[{}]: {}".format(
                                     self.openai.chat_model,
                                     send_to,
-                                    answer_without_last_line.rstrip().replace("\n", "\n  | ")))
+                                    content.rstrip().replace("\n", "\n  | ")))
                                 try:
-                                    self.dingtalk.send_text(answer_without_last_line, session_webhook)
+                                    self.dingtalk.send_text(content, session_webhook)
                                 except Exception as e:
                                     print("Send answer to dingtalk Failed", e.args)
                                     continue
-                                usage += self.openai.num_tokens_from_string(answer)
-                                answer = last_line
-                                if_in_block = True
-                        elif answer.rstrip().endswith('```') and if_in_block:
-                            print("[{}]->[{}]: {}".format(
-                                self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
-                            try:
-                                self.dingtalk.send_text(answer, session_webhook)
-                            except Exception as e:
-                                print("Send answer to dingtalk Failed", e.args)
-                                continue
-                            usage += self.openai.num_tokens_from_string(answer)
-                            answer = ''
-                            if_in_block = False
+                                usage += self.openai.num_tokens_from_string(content)
                         elif answer.endswith('\n\n') and not if_in_block:
                             print("[{}]->[{}]: {}".format(
                                 self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
@@ -136,7 +131,7 @@ class DingtalkMessagesHandler:
                         self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
                     answer_tokens = self.openai.num_tokens_from_string(answer)
                     self.dingtalk.send_text(
-                        answer.rstrip() + message_bottom(prompt_tokens + usage + answer_tokens,self.openai.chat_model),
+                        answer.rstrip() + message_bottom(prompt_tokens + usage + answer_tokens, self.openai.chat_model),
                         session_webhook)
                     usage += answer_tokens
 
