@@ -95,7 +95,7 @@ class DingtalkMessagesHandler:
                         if answer.rstrip().endswith('```') and not if_in_block:
                             lines = answer.rstrip().splitlines()  # to lines
                             last_line = lines[-1]
-                            answer_without_last_line = lines[:-1]
+                            answer_without_last_line = "\n".join(lines[:-1])
                             if last_line.strip() == "```":
                                 print("[{}]->[{}]: {}".format(
                                     self.openai.chat_model,
