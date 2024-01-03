@@ -92,6 +92,8 @@ class DingtalkMessagesHandler:
                     if chunk_message is not None and len(chunk_message) > 0 \
                             and len(answer.strip()) + len(chunk_message.strip()) > 0:
                         answer += str(chunk_message)
+                        if answer[-1] != '\n':
+                            continue
                         if answer.rstrip().endswith('```'):
                             lines = answer.rstrip().splitlines()  # to lines
                             last_line = lines[-1]
