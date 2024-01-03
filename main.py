@@ -93,7 +93,22 @@ class DingtalkMessagesHandler:
                             and len(answer.strip()) + len(chunk_message.strip()) > 0:
                         answer += str(chunk_message)
                         if answer.rstrip().endswith('```') and not if_in_block:
-                            if_in_block = not if_in_block
+                            lines = answer.rstrip().splitlines()  # to lines
+                            last_line = lines[-1]
+                            answer_without_last_line = lines[:-1]
+                            if last_line.strip() == "```":
+                                print("[{}]->[{}]: {}".format(
+                                    self.openai.chat_model,
+                                    send_to,
+                                    answer_without_last_line.rstrip().replace("\n", "\n  | ")))
+                                try:
+                                    self.dingtalk.send_text(answer, session_webhook)
+                                except Exception as e:
+                                    print("Send answer to dingtalk Failed", e.args)
+                                    continue
+                                usage += self.openai.num_tokens_from_string(answer)
+                                answer = last_line
+                                if_in_block = not if_in_block
                         elif answer.rstrip().endswith('```') and if_in_block:
                             if_in_block = not if_in_block
                             print("[{}]->[{}]: {}".format(
