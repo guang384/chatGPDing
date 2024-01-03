@@ -135,14 +135,13 @@ class DingtalkMessagesHandler:
                             usage += self.openai.num_tokens_from_string(answer)
                             answer = ''
 
-                if len(answer) > 0:
-                    print("[{}]->[{}]: {}".format(
-                        self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
-                    answer_tokens = self.openai.num_tokens_from_string(answer)
-                    self.dingtalk.send_text(
-                        answer.rstrip() + message_bottom(prompt_tokens + usage + answer_tokens, self.openai.chat_model),
-                        session_webhook)
-                    usage += answer_tokens
+                print("[{}]->[{}]: {}".format(
+                    self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
+                answer_tokens = self.openai.num_tokens_from_string(answer)
+                self.dingtalk.send_text(
+                    answer.rstrip() + message_bottom(prompt_tokens + usage + answer_tokens, self.openai.chat_model),
+                    session_webhook)
+                usage += answer_tokens
 
                 end_time = time.perf_counter()
 
