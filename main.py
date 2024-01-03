@@ -102,15 +102,14 @@ class DingtalkMessagesHandler:
                                     send_to,
                                     answer_without_last_line.rstrip().replace("\n", "\n  | ")))
                                 try:
-                                    self.dingtalk.send_text(answer, session_webhook)
+                                    self.dingtalk.send_text(answer_without_last_line, session_webhook)
                                 except Exception as e:
                                     print("Send answer to dingtalk Failed", e.args)
                                     continue
                                 usage += self.openai.num_tokens_from_string(answer)
                                 answer = last_line
-                                if_in_block = not if_in_block
+                                if_in_block = True
                         elif answer.rstrip().endswith('```') and if_in_block:
-                            if_in_block = not if_in_block
                             print("[{}]->[{}]: {}".format(
                                 self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
                             try:
@@ -120,6 +119,7 @@ class DingtalkMessagesHandler:
                                 continue
                             usage += self.openai.num_tokens_from_string(answer)
                             answer = ''
+                            if_in_block = False
                         elif answer.endswith('\n\n') and not if_in_block:
                             print("[{}]->[{}]: {}".format(
                                 self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
