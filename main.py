@@ -73,10 +73,9 @@ class DingtalkMessagesHandler:
 
                 # organize responses
                 answer = completion.choices[0].message.content
-                usage = dict(completion).get('usage')
-                message_bottom = "\n\n( --- Used up " + str(usage.total_tokens) + " tokens. --- )"
-
-                self.dingtalk.send_text(answer.rstrip() + message_bottom, session_webhook)
+                self.dingtalk.send_text(
+                    answer.rstrip() + message_bottom(usage.total_tokens,self.openai.chat_model),
+                    session_webhook)
                 print("Estimated Completion Tokens:", self.openai.num_tokens_from_string(answer))
                 print("[{}]->[{}]: {}".format(self.openai.chat_model, send_to, answer.replace("\n", "\n  | ")))
 
@@ -121,9 +120,9 @@ class DingtalkMessagesHandler:
                     print("[{}]->[{}]: {}".format(
                         self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
                     answer_tokens = self.openai.num_tokens_from_string(answer)
-                    message_bottom = "\n\n( --- Used up " + str(
-                        prompt_tokens + usage + answer_tokens) + " tokens. --- )"
-                    self.dingtalk.send_text(answer.rstrip() + message_bottom, session_webhook)
+                    self.dingtalk.send_text(
+                        answer.rstrip() + message_bottom(prompt_tokens + usage + answer_tokens,self.openai.chat_model),
+                        session_webhook)
                     usage += answer_tokens
 
                 end_time = time.perf_counter()
@@ -144,6 +143,10 @@ class DingtalkMessagesHandler:
 
     def check_signature(self, timestamp, sign):
         return self.dingtalk.check_signature(timestamp, sign)
+
+
+def message_bottom(usage, model):
+    return f"\n\n( --- Used up {usage} tokens. --- )\n( --- {model} --- )"
 
 
 def truncate_string(s):
