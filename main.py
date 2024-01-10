@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from queue import Queue
-
+import asyncio
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 
@@ -34,7 +34,7 @@ class DingtalkMessagesHandler:
 
     def start_workers(self):
         for i in range(self.number_workers):
-            worker = threading.Thread(target=self.process_request, args=(i,))
+            worker = threading.Thread(target=asyncio.run, args=(self.process_request(i),))
             worker.start()
 
     def stop_workers(self):
@@ -43,7 +43,7 @@ class DingtalkMessagesHandler:
             self.queue.put({})
             time.sleep(0.001)
 
-    def process_request(self, num):
+    async def process_request(self, num):
         print("Started Message processing Worker: #" + str(num))
         while not self.stopped:
             request = self.queue.get()
@@ -51,7 +51,7 @@ class DingtalkMessagesHandler:
                 self.queue.task_done()
                 break
             # main logic
-            self.process_messages(request['session_webhook'], request['send_to'], request['messages'])
+            await self.process_messages(request['session_webhook'], request['send_to'], request['messages'])
 
             # remove processed
             del self.processing[request['session_webhook']]
@@ -59,7 +59,7 @@ class DingtalkMessagesHandler:
             self.queue.task_done()
         print("Stopped Message processing Worker: #" + str(num))
 
-    def process_messages(self, session_webhook, send_to, messages):
+    async def process_messages(self, session_webhook, send_to, messages):
         prompt_tokens = self.openai.num_tokens_from_messages(messages)
         print("Estimated Prompt Tokens:", prompt_tokens)
 
@@ -73,7 +73,7 @@ class DingtalkMessagesHandler:
 
                 # organize responses
                 answer = completion.choices[0].message.content
-                self.dingtalk.send_text(
+                await self.dingtalk.send_text(
                     answer.rstrip() + message_bottom(usage.total_tokens, self.openai.chat_model),
                     session_webhook)
                 print("Estimated Completion Tokens:", self.openai.num_tokens_from_string(answer))
@@ -118,7 +118,7 @@ class DingtalkMessagesHandler:
                                     send_to,
                                     content.rstrip().replace("\n", "\n  | ")))
                                 try:
-                                    self.dingtalk.send_text(content, session_webhook)
+                                    await self.dingtalk.send_text(content, session_webhook)
                                 except Exception as e:
                                     print("Send answer to dingtalk Failed", e.args)
                                     continue
@@ -128,7 +128,7 @@ class DingtalkMessagesHandler:
                             print("[{}]->[{}]: {}".format(
                                 self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
                             try:
-                                self.dingtalk.send_text(answer, session_webhook)
+                                await self.dingtalk.send_text(answer, session_webhook)
                             except Exception as e:
                                 print("Send answer to dingtalk Failed", e.args)
                                 continue
@@ -138,7 +138,7 @@ class DingtalkMessagesHandler:
                 print("[{}]->[{}]: {}".format(
                     self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
                 answer_tokens = self.openai.num_tokens_from_string(answer)
-                self.dingtalk.send_text(
+                await self.dingtalk.send_text(
                     answer.rstrip() + message_bottom(prompt_tokens + usage + answer_tokens, self.openai.chat_model),
                     session_webhook)
                 usage += answer_tokens

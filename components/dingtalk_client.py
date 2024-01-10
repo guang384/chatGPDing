@@ -8,7 +8,7 @@ import time
 from http.client import HTTPException
 from urllib.parse import urlunparse, urlparse
 
-import requests
+import aiohttp
 
 logging.basicConfig(level=logging.WARN)
 
@@ -74,7 +74,7 @@ class DingtalkClient:
         }
         self._send_to_dingtalk_server(data, url)
 
-    def send_text(self, answer, session_webhook):
+    async def send_text(self, answer, session_webhook):
         if len(answer.strip()) > 0:
             url = session_webhook
             data = {
@@ -83,11 +83,10 @@ class DingtalkClient:
                     "content": answer.strip()
                 }
             }
-            self._send_to_dingtalk_server(data, url)
+            await self._send_to_dingtalk_server(data, url)
 
-    def _send_to_dingtalk_server(self, data, url):
+    async def _send_to_dingtalk_server(self, data, url):
         # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
-        url = self._rewrite_session_webhook(url)
         url = self._rewrite_session_webhook(url)
 
         headers = {'Content-Type': 'application/json'}
@@ -96,11 +95,13 @@ class DingtalkClient:
 
             payload = json.dumps(data)
             dingtalk_start_time = time.perf_counter()
-            response = requests.post(url, data=payload, headers=headers)
-            dingtalk_end_time = time.perf_counter()
-            print("Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
-            if response.json()['errcode'] != 0:
-                raise RuntimeError("Error while call dingtalk :" + json.dumps(response.json()))
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=payload, headers=headers) as response:
+                    dingtalk_end_time = time.perf_counter()
+                    print("Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
+                    response_json = await response.json();
+                    if response_json['errcode'] != 0:
+                        raise RuntimeError("Error while call dingtalk :" + json.dumps(response.json()))
         except Exception as e:
             dingtalk_end_time = time.perf_counter()
             print("Error Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
