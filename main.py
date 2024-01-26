@@ -73,6 +73,8 @@ class DingtalkMessagesHandler:
 
                 # organize responses
                 answer = completion.choices[0].message.content
+                usage = dict(completion).get('usage')
+
                 await self.dingtalk.send_text(
                     answer.rstrip() + message_bottom(usage.total_tokens, self.openai.chat_model),
                     session_webhook)
