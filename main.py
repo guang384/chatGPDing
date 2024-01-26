@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import threading
 import time
 import os
@@ -17,8 +18,14 @@ from components import DingtalkClient, OpenaiClient, DashscopeClient
 
 logging.basicConfig(level=logging.WARN)
 
+md5_filename_pattern = r"([0-9a-f]{32}\.png|[0-9a-f]{32}\.jpg)"  # Match file names of images with 32-bit MD5 encoding.
+
 
 class DingtalkMessagesHandler:
+    """
+    Processing messages received from DingTalk users.
+    """
+
     def __init__(self, if_stream=True, number_workers=5):
         self.queue = Queue()
         self.dingtalk = DingtalkClient()
@@ -36,7 +43,7 @@ class DingtalkMessagesHandler:
 
     def handle_request(self, request):
         self.queue.put(request)
-        self.processing[request['session_webhook']] = request['messages']
+        self.processing[request['session_webhook']] = request['message']
 
     def start_workers(self):
         for i in range(self.number_workers):
@@ -57,7 +64,7 @@ class DingtalkMessagesHandler:
                 self.queue.task_done()
                 break
             # main logic
-            await self.process_messages(request['session_webhook'], request['send_to'], request['messages'])
+            await self.process_message(request['session_webhook'], request['send_to'], request['message'])
 
             # remove processed
             del self.processing[request['session_webhook']]
@@ -65,7 +72,39 @@ class DingtalkMessagesHandler:
             self.queue.task_done()
         print("Stopped Message processing Worker: #" + str(num))
 
-    async def process_messages(self, session_webhook, send_to, messages):
+    async def process_message(self, session_webhook, send_to, message):
+        # If the file content contains image names and the images exist, use a multimodal model to answer.
+        if_has_exist_image = False
+        if re.search(md5_filename_pattern, message):
+            segments = re.split(md5_filename_pattern, message)
+            contents=[]
+            for segment in segments:
+                if len(segment) == 0:
+                    continue
+                if re.search(md5_filename_pattern, segment):
+                    dir_name = os.path.abspath(download_dir)
+                    file_path = os.path.join(dir_name, segment)
+                    if os.path.exists(file_path):
+                        if_has_exist_image = True
+                        contents.append({"image": "file://" + file_path})
+                        continue
+                contents.append({"text": segment})
+
+        if if_has_exist_image:
+            # Hand it over to Qwen-VL
+            content, usage = await self.dashscope.multimodal_conversation(contents)
+            await self.dingtalk.send_text(
+                content + message_bottom(
+                    {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
+                    self.dashscope.model),
+                session_webhook)
+            return
+
+        # Hand it over to ChatGPT
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant. Answer in Chinese unless specified otherwise."},
+            {"role": "user", "content": message}
+        ]
         prompt_tokens = self.openai.num_tokens_from_messages(messages)
         print("Estimated Prompt Tokens:", prompt_tokens)
 
@@ -315,10 +354,6 @@ async def root(request: Request):
     session_webhook = message['sessionWebhook']
     senderNick = message['senderNick']
     senderContent = message['text']['content']
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant. Answer in Chinese unless specified otherwise."},
-        {"role": "user", "content": senderContent}
-    ]
 
     # Concurrency Control
     if handler.is_session_webhook_in_processing(session_webhook):
@@ -330,7 +365,7 @@ async def root(request: Request):
             "markdown": {
                 "title": "[忙疯了]好快...",
                 "text": "<font color=silver>你发的太快了…… 有点处理不过来了呢…… [尴尬]\n\n\n我还在琢磨：\""
-                        + truncate_string(processing_message[-1]['content']) + "\""
+                        + truncate_string(processing_message) + "\""
             }
         }
 
@@ -340,7 +375,7 @@ async def root(request: Request):
     handler.handle_request({
         'session_webhook': session_webhook,
         'send_to': senderNick,
-        'messages': messages
+        'message': senderContent
     })
 
     # Do not reply now, reply later using webhook method.
