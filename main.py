@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import threading
 import time
@@ -204,8 +205,11 @@ def is_valid_md_code_end(line, backticks_count) -> bool:
     return True
 
 
-def message_bottom(usage, model):
-    return f"\n\n( --- Used up {usage} tokens. --- )\n( --- {model} --- )"
+def message_bottom(usage, model, file_name=None):
+    if file_name is None:
+        return f"\n\n( --- Used up {usage} tokens. --- )\n( --- {model} --- )"
+    else:
+        return f"\n\n( --- {file_name} --- )\n( --- Used up {usage} tokens. --- )\n( --- {model} --- )"
 
 
 def truncate_string(s):
@@ -246,8 +250,12 @@ print("File download directory: {}".format(download_dir))
 def download_file(url, dir_path):
     response = requests.get(url)
     if response.status_code == 200:
+        file_content = response.content
+        md5_hash = hashlib.md5(file_content).hexdigest()
         parsed_url = urlparse(url)
         file_name = os.path.basename(parsed_url.path)
+        file_extension = os.path.splitext(file_name)[1]
+        file_name = md5_hash + file_extension
         dir_name = os.path.abspath(dir_path)
         os.makedirs(dir_name, exist_ok=True)
 
@@ -290,7 +298,7 @@ async def root(request: Request):
             "text": {
                 "content": content + message_bottom(
                     {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
-                    handler.dashscope.model)
+                    handler.dashscope.model, os.path.basename(file_path))
             }
         }
 
