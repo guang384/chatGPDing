@@ -28,12 +28,17 @@ class DingtalkClient:
             self,
             rewrite_host=None,
             rewrite_pathname=None,
+            app_keys=None,
             secret_keys=None
 
     ):
         self.rewrite_host = rewrite_host
         self.rewrite_pathname = rewrite_pathname
+        self.app_keys = app_keys
         self.secret_keys = secret_keys
+
+        self.access_token = {}
+        self.access_token_expires = {}
 
         if rewrite_host is None:
             self.rewrite_host = os.environ.get("REWRITE_DINGTALK_HOST")
@@ -42,6 +47,12 @@ class DingtalkClient:
         if self.rewrite_host is not None:
             print("rewrite http://oapi.dingtalk.com/robot/sendBySession to http://%s/%s" % (
                 self.rewrite_host, self.rewrite_pathname))
+
+        if app_keys is None:
+            self.app_keys = os.getenv("DINGTALK_APP_KEY")
+        if self.app_keys is None:
+            logging.error("Need to set environment variable: DINGTALK_APP_KEY.")
+            raise ValueError("You need to set a DingTalk App Key")
 
         if secret_keys is None:
             self.secret_keys = os.getenv("DINGTALK_APP_SECRET")
@@ -55,11 +66,17 @@ class DingtalkClient:
         return urlunparse(urlparse(session_webhook)._replace(netloc=self.rewrite_host, path=self.rewrite_pathname))
 
     def check_signature(self, timestamp, sign):
-        for secret_key in self.secret_keys.split(','):
+        """
+        check_signature
+        :param timestamp:
+        :param sign:
+        :return: app_key
+        """
+        for index, secret_key in enumerate(self.secret_keys.split(',')):
             contents = timestamp + "\n" + secret_key
             signed = _hmac_sha256_base64_encode(secret_key, contents)
             if signed == sign:
-                return
+                return self.app_keys.split(',')[index]
         print("DINGTALK_APP_SECRET not right.", secret_key)
         raise HTTPException(status_code=401, detail="DingTalk signature verification failed.")
 
@@ -99,10 +116,75 @@ class DingtalkClient:
                 async with session.post(url, data=payload, headers=headers) as response:
                     dingtalk_end_time = time.perf_counter()
                     print("Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
-                    response_json = await response.json();
+                    response_json = await response.json()
                     if response_json['errcode'] != 0:
                         raise RuntimeError("Error while call dingtalk :" + json.dumps(response.json()))
         except Exception as e:
             dingtalk_end_time = time.perf_counter()
             print("Error Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
+            raise e
+
+    async def _refresh_access_token(self, app_key):
+        if app_key not in self.access_token_expires or time.perf_counter() > self.access_token_expires[app_key]:
+            api_url = "https://oapi.dingtalk.com/gettoken"
+
+            print("Refresh access_token {} ...".format(app_key))
+            params = {
+                'appkey': app_key
+            }
+            for index, curr_app_key in enumerate(self.app_keys.split(',')):
+                if curr_app_key == app_key:
+                    params['appsecret'] = self.secret_keys.split(',')[index]
+                    break
+            dingtalk_access_token_start_time = time.perf_counter()
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(api_url,params=params) as response:
+                        dingtalk_access_token_end_time = time.perf_counter()
+                        print("Request duration: refresh access_token {:.3f} s.".format(
+                            (dingtalk_access_token_end_time - dingtalk_access_token_start_time)))
+                        response_json = await response.json()
+                        if response_json['errcode'] != 0:
+                            raise RuntimeError("Error while refresh access_token :" + json.dumps(response_json,
+                                                                                                 ensure_ascii=False))
+                        self.access_token_expires[app_key] = time.perf_counter() + response_json['expires_in'] * 0.8
+                        self.access_token[app_key] = response_json['access_token']
+            except Exception as e:
+                dingtalk_access_token_end_time = time.perf_counter()
+                print("Error Request duration:  refresh access_token {:.3f} s.".format(
+                    (dingtalk_access_token_end_time - dingtalk_access_token_start_time)))
+                raise e
+        return self.access_token[app_key]
+
+    async def get_file_download_url(self, app_key, download_code):
+        access_token = await self._refresh_access_token(app_key)
+        api_url = "https://api.dingtalk.com/v1.0/robot/messageFiles/download"
+        payload = json.dumps({
+            "downloadCode": download_code,
+            "robotCode": app_key
+        })
+        headers = {
+            'x-acs-dingtalk-access-token': access_token,
+            'Content-Type': 'application/json'
+        }
+        try:
+            print("Require  download url of [{}]{} ...".format(app_key, download_code))
+
+            dingtalk_api_start_time = time.perf_counter()
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_url, data=payload, headers=headers) as response:
+                    dingtalk_api_end_time = time.perf_counter()
+                    print("Request duration: require download url {:.3f} s.".format(
+                        (dingtalk_api_end_time - dingtalk_api_start_time)))
+                    response_json = await response.json()
+                    if 'downloadUrl' not in response_json:
+                        raise RuntimeError("Error while require download url :" + json.dumps(response_json,
+                                                                                             ensure_ascii=False))
+                    print("Required download url is [{}]{}".format(app_key, response_json['downloadUrl']))
+                    return response_json['downloadUrl']
+        except Exception as e:
+            dingtalk_api_end_time = time.perf_counter()
+            print("Error Request duration: require download url {:.3f} s.".format(
+                (dingtalk_api_end_time - dingtalk_api_start_time)))
             raise e

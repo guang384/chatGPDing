@@ -1,14 +1,18 @@
 import logging
 import threading
 import time
+import os
 from queue import Queue
 import asyncio
+from urllib.parse import urlparse
+
+import requests
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 
 from openai.types.chat import ChatCompletion
 
-from components import DingtalkClient, OpenaiClient
+from components import DingtalkClient, OpenaiClient, DashscopeClient
 
 logging.basicConfig(level=logging.WARN)
 
@@ -18,6 +22,7 @@ class DingtalkMessagesHandler:
         self.queue = Queue()
         self.dingtalk = DingtalkClient()
         self.openai = OpenaiClient(if_stream=if_stream)
+        self.dashscope = DashscopeClient()
         self.stopped = False
         self.processing = {}
         self.number_workers = number_workers
@@ -231,10 +236,33 @@ handler = DingtalkMessagesHandler(
 
 app = FastAPI(lifespan=lifespan)
 
+download_dir = os.getenv("DOWNLOAD_DIR")
+if download_dir is None:
+    logging.info("You can modify the file save directory by setting the environment variable DOWNLOAD_DIR.")
+    download_dir = './downloads'
+print("File download directory: {}".format(download_dir))
+
+
+def download_file(url, dir_path):
+    response = requests.get(url)
+    if response.status_code == 200:
+        parsed_url = urlparse(url)
+        file_name = os.path.basename(parsed_url.path)
+        dir_name = os.path.abspath(dir_path)
+        os.makedirs(dir_name, exist_ok=True)
+
+        file_path = os.path.join(dir_name, file_name)
+        with open(file_path, 'wb') as file:
+            file.write(response.content)
+        print(f'File has been saved as：{file_path}')
+        return file_path
+    else:
+        print('File download error')
+
 
 @app.post("/")
 async def root(request: Request):
-    handler.check_signature(
+    app_key = handler.check_signature(
         request.headers.get('timestamp'),
         request.headers.get('sign'))
 
@@ -248,6 +276,24 @@ async def root(request: Request):
         message['text'] = {
             "content": message['content']['recognition']
         }
+    elif message['msgtype'] == 'picture':
+        download_code = message['content']['downloadCode']
+        print("[{}] sent a message of type 'picture'.  -> {}".format(message['senderNick'], download_code))
+        image_url = await handler.dingtalk.get_file_download_url(app_key, download_code)
+        file_path = download_file(image_url, download_dir)
+        content, usage = await handler.dashscope.multimodal_conversation([
+            {"image": "file://" + os.path.abspath(file_path)},
+            {"text": "这是什么?"}
+        ])
+        return {
+            "msgtype": "text",
+            "text": {
+                "content": content + message_bottom(
+                    {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
+                    handler.dashscope.model)
+            }
+        }
+
     elif message['msgtype'] != 'text':
         print("[{}] sent a message of type '{}'.  -> {}".format(message['senderNick'], message['msgtype'], message))
         return {

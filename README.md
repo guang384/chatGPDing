@@ -33,12 +33,17 @@ Start Shell
 
 cd /home/cui/chatGPDing
 
-export OPENAI_API_KEY=sk-HY*******R
+export DINGTALK_APP_KEY=ding****dzkz,ding***sdex
 export DINGTALK_APP_SECRET=ljnV62W*********3I_OyYsHrfOk,pHGW******V8qPo0d9
 export REWRITE_DINGTALK_HOST=some.domain
 export REWRITE_DINGTALK_PATHNAME=hellotalk
+
+export OPENAI_API_KEY=sk-HY*******R
 export OPENAI_BASE_URL=https://some.domain/hellogpt
 export OPENAI_CHAT_MODEL=gpt-4-1106-preview
+
+export DASHSCOPE_API_KEY=sk-df4678ffebb0409c8fcc8ee6d52a26d6
+
 export SERVER_PORT=8035
 
 source venv/bin/activate && python main.py
