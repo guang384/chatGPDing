@@ -98,6 +98,8 @@ class DingtalkMessagesHandler:
                     {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
                     self.dashscope.model),
                 session_webhook)
+            print("[{}]->[{}]: {}".format(
+                self.dashscope.model, send_to, content.rstrip().replace("\n", "\n  | ")))
             return
 
         # Hand it over to ChatGPT
@@ -332,6 +334,8 @@ async def root(request: Request):
             {"image": "file://" + os.path.abspath(file_path)},
             {"text": "这是什么?"}
         ])
+        print("[{}]->[{}]: {}".format(
+            handler.dashscope.model, message['senderNick'], content.rstrip().replace("\n", "\n  | ")))
         return {
             "msgtype": "text",
             "text": {
