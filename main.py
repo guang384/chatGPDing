@@ -7,6 +7,8 @@ import os
 from queue import Queue
 import asyncio
 from urllib.parse import urlparse
+import chardet
+import openai
 
 import requests
 from fastapi import FastAPI, Request
@@ -18,7 +20,8 @@ from components import DingtalkClient, OpenaiClient, DashscopeClient
 
 logging.basicConfig(level=logging.WARN)
 
-md5_filename_pattern = r"([0-9a-f]{32}\.png|[0-9a-f]{32}\.jpg)"  # Match file names of images with 32-bit MD5 encoding.
+# Matching image name, image name is the first 8 characters of MD5 encoding and in uppercase.
+md5_filename_pattern = r"([0-9A-F]{8}\.png|[0-9A-F]{8}\.jpg)"
 
 
 class DingtalkMessagesHandler:
@@ -77,7 +80,7 @@ class DingtalkMessagesHandler:
         if_has_exist_image = False
         if re.search(md5_filename_pattern, message):
             segments = re.split(md5_filename_pattern, message)
-            contents=[]
+            contents = []
             for segment in segments:
                 if len(segment) == 0:
                     continue
@@ -175,7 +178,9 @@ class DingtalkMessagesHandler:
 
                         if answer.endswith('\n\n') and not if_in_block and len(answer) > 100:
                             print("[{}]->[{}]: {}".format(
-                                self.openai.chat_model, send_to, answer.rstrip().replace("\n", "\n  | ")))
+                                self.openai.chat_model,
+                                send_to,
+                                answer.rstrip().replace("\n", "\n  | ")))
                             try:
                                 await self.dingtalk.send_text(answer, session_webhook)
                             except Exception as e:
@@ -202,14 +207,32 @@ class DingtalkMessagesHandler:
             print("Error Request duration: openai {:.3f} s.".format((end_time - start_time)))
 
             logging.error(e)
-            # traceback.print_exc()
-            self.dingtalk.send_markdown(
-                "我错了 orz",
-                "<font color=silver>完，出错啦！暂时没法用咯…… 等会再试试吧 [傻笑] <br />（%s）" % e.args,
-                session_webhook)
+            if isinstance(e, openai.BadRequestError) and e.code == 'context_length_exceeded':
+                await self.dingtalk.send_markdown(
+                    "好长 orz",
+                    "<font color=silver>好家伙，这也太长了…… 弄短点吧 [傻笑] <br />（%s）" % e.args,
+                    session_webhook)
+            else:
+                await self.dingtalk.send_markdown(
+                    "我错了 orz",
+                    "<font color=silver>完，出错啦！暂时没法用咯…… 等会再试试吧 [傻笑] <br />（%s）" % e.args,
+                    session_webhook)
 
     def check_signature(self, timestamp, sign):
         return self.dingtalk.check_signature(timestamp, sign)
+
+    async def processes_multimodal_conversation(self, sender, conversations, file_info=None):
+        content, usage = await self.dashscope.multimodal_conversation(conversations)
+        print("[{}]->[{}]: {}".format(
+            handler.dashscope.model, sender, content.rstrip().replace("\n", "\n  | ")))
+        return {
+            "msgtype": "text",
+            "text": {
+                "content": content + message_bottom(
+                    {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
+                    handler.dashscope.model, file_info)
+            }
+        }
 
 
 def is_valid_md_code_start(line) -> (bool, int):
@@ -288,15 +311,16 @@ if download_dir is None:
 print("File download directory: {}".format(download_dir))
 
 
-def download_file(url, dir_path):
+def download_file(url, dir_path, file_extension=None):
     response = requests.get(url)
     if response.status_code == 200:
         file_content = response.content
         md5_hash = hashlib.md5(file_content).hexdigest()
         parsed_url = urlparse(url)
         file_name = os.path.basename(parsed_url.path)
-        file_extension = os.path.splitext(file_name)[1]
-        file_name = md5_hash + file_extension
+        if file_extension is None:
+            file_extension = os.path.splitext(file_name)[1]
+        file_name = md5_hash[:8].upper() + file_extension
         dir_name = os.path.abspath(dir_path)
         os.makedirs(dir_name, exist_ok=True)
 
@@ -322,6 +346,7 @@ async def root(request: Request):
     if message['msgtype'] == 'audio':
         print("[{}] sent a message of type 'audio'.  -> {}".format(
             message['senderNick'], message['content']['recognition']))
+        # process as normal text message
         message['text'] = {
             "content": message['content']['recognition']
         }
@@ -330,29 +355,47 @@ async def root(request: Request):
         print("[{}] sent a message of type 'picture'.  -> {}".format(message['senderNick'], download_code))
         image_url = await handler.dingtalk.get_file_download_url(app_key, download_code)
         file_path = download_file(image_url, download_dir)
-        content, usage = await handler.dashscope.multimodal_conversation([
+        return await handler.processes_multimodal_conversation(message['senderNick'], [
             {"image": "file://" + os.path.abspath(file_path)},
             {"text": "这是什么?"}
-        ])
-        print("[{}]->[{}]: {}".format(
-            handler.dashscope.model, message['senderNick'], content.rstrip().replace("\n", "\n  | ")))
-        return {
-            "msgtype": "text",
-            "text": {
-                "content": content + message_bottom(
-                    {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
-                    handler.dashscope.model, os.path.basename(file_path))
-            }
+        ], os.path.basename(file_path))
+    elif message['msgtype'] == 'richText':
+        questions = []
+        rich_text = message['content']['richText']
+        images = []
+        for element in rich_text:
+            if 'type' in element and element['type'] == 'picture':
+                download_code = element['downloadCode']
+                image_url = await handler.dingtalk.get_file_download_url(app_key, download_code)
+                file_path = download_file(image_url, download_dir)
+                questions.append({"image": "file://" + os.path.abspath(file_path)})
+                images.append(os.path.basename(file_path))
+            elif 'text' in element:
+                questions.append({"text": element['text']})
+        return await handler.processes_multimodal_conversation(message['senderNick'], questions, images)
+    elif message['msgtype'] == 'file':
+        file_name = message['content']['fileName']
+        ext = os.path.splitext(file_name)[1]
+        if ext != '.txt':
+            return await send_unknown_message(message)
+        download_code = message['content']['downloadCode']
+        file_url = await handler.dingtalk.get_file_download_url(app_key, download_code)
+        file_path = download_file(file_url, download_dir, ext)
+        # guess encoding
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            result = chardet.detect(content)
+            encoding = result['encoding']
+        # read content
+        with open(file_path, 'r', encoding=encoding) as file:
+            content = file.read()
+            print(content)
+        # process as normal text message
+        message['text'] = {
+            "content": content
         }
-
     elif message['msgtype'] != 'text':
-        print("[{}] sent a message of type '{}'.  -> {}".format(message['senderNick'], message['msgtype'], message))
-        return {
-            "msgtype": "text",
-            "text": {
-                "content": "请不要发文字信息意外的其他类型信息，我无法理解。"
-            }
-        }
+        return await send_unknown_message(message)
 
     # prepare to call
     session_webhook = message['sessionWebhook']
@@ -385,6 +428,16 @@ async def root(request: Request):
     # Do not reply now, reply later using webhook method.
     return {
         "msgtype": "empty"
+    }
+
+
+async def send_unknown_message(message):
+    print("[{}] sent a message of type '{}'.  -> {}".format(message['senderNick'], message['msgtype'], message))
+    return {
+        "msgtype": "text",
+        "text": {
+            "content": "我暂时无法理解这个类型的信息。"
+        }
     }
 
 

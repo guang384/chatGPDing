@@ -80,7 +80,7 @@ class DingtalkClient:
         print("DINGTALK_APP_SECRET not right.", secret_key)
         raise HTTPException(status_code=401, detail="DingTalk signature verification failed.")
 
-    def send_markdown(self, title, text, session_webhook):
+    async def send_markdown(self, title, text, session_webhook):
         url = session_webhook
         data = {
             "msgtype": "markdown",
@@ -89,7 +89,7 @@ class DingtalkClient:
                 "text": text
             }
         }
-        self._send_to_dingtalk_server(data, url)
+        await self._send_to_dingtalk_server(data, url)
 
     async def send_text(self, answer, session_webhook):
         if len(answer.strip()) > 0:
