@@ -77,7 +77,7 @@ class DingtalkMessagesHandler:
 
     async def process_message(self, session_webhook, send_to, message):
         # If the file content contains image names and the images exist, use a multimodal model to answer.
-        if_has_exist_image = False
+        images = re.findall(md5_filename_pattern, message)
         contents = []
         if re.search(md5_filename_pattern, message):
             segments = re.split(md5_filename_pattern, message)
@@ -88,18 +88,20 @@ class DingtalkMessagesHandler:
                     dir_name = os.path.abspath(download_dir)
                     file_path = os.path.join(dir_name, segment)
                     if os.path.exists(file_path):
-                        if_has_exist_image = True
                         contents.append({"image": "file://" + file_path})
                         continue
+                    else:
+                        images.remove(segment)
                 contents.append({"text": segment})
 
-        if if_has_exist_image:
+        if len(images)>0:
             # Hand it over to Qwen-VL
             content, usage = await self.dashscope.multimodal_conversation(contents)
             await self.dingtalk.send_text(
                 content + message_bottom(
                     {"in": usage['input_tokens'], "out": usage['output_tokens'], "img": usage['image_tokens']},
-                    self.dashscope.model),
+                    self.dashscope.model,
+                    images),
                 session_webhook)
             print("[{}]->[{}]: {}".format(
                 self.dashscope.model, send_to, content.rstrip().replace("\n", "\n  | ")))
@@ -351,24 +353,25 @@ async def root(request: Request):
         print("[{}] sent a message of type 'picture'.  -> {}".format(message['senderNick'], download_code))
         image_url = await handler.dingtalk.get_file_download_url(app_key, download_code)
         file_path = download_file(image_url, download_dir)
-        return await handler.processes_multimodal_conversation(message['senderNick'], [
-            {"image": "file://" + os.path.abspath(file_path)},
-            {"text": "这是什么?"}
-        ], os.path.basename(file_path))
+        # process as normal text message
+        message['text'] = {
+            "content": os.path.basename(file_path) + ' 这是什么?'
+        }
     elif message['msgtype'] == 'richText':
-        questions = []
+        segments = []
         rich_text = message['content']['richText']
-        images = []
         for element in rich_text:
             if 'type' in element and element['type'] == 'picture':
                 download_code = element['downloadCode']
                 image_url = await handler.dingtalk.get_file_download_url(app_key, download_code)
                 file_path = download_file(image_url, download_dir)
-                questions.append({"image": "file://" + os.path.abspath(file_path)})
-                images.append(os.path.basename(file_path))
+                segments.append(os.path.basename(file_path))
             elif 'text' in element:
-                questions.append({"text": element['text']})
-        return await handler.processes_multimodal_conversation(message['senderNick'], questions, images)
+                segments.append(element['text'])
+            # process as normal text message
+            message['text'] = {
+                "content": ' '.join(segments)
+            }
     elif message['msgtype'] == 'file':
         file_name = message['content']['fileName']
         ext = os.path.splitext(file_name)[1]

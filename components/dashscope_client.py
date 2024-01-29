@@ -1,6 +1,6 @@
 import json
 import logging
-import os
+import time
 from http import HTTPStatus
 import dashscope
 logging.basicConfig(level=logging.WARN)
@@ -38,8 +38,13 @@ class DashscopeClient:
                 "content": contents
             }
         ]
+        start_time = time.perf_counter()
         response = dashscope.MultiModalConversation.call(model=self.model,
                                                          messages=messages)
+        end_time = time.perf_counter()
+        print("Request duration: dashscope {:.3f} s. Token usage: {}.".format(
+            (end_time - start_time), str(response['usage'])))
+
         # The response status_code is HTTPStatus.OK indicate success,
         # otherwise indicate request is failed, you can get error code
         # and message from code and message.
