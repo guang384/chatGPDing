@@ -78,9 +78,9 @@ class DingtalkMessagesHandler:
     async def process_message(self, session_webhook, send_to, message):
         # If the file content contains image names and the images exist, use a multimodal model to answer.
         if_has_exist_image = False
+        contents = []
         if re.search(md5_filename_pattern, message):
             segments = re.split(md5_filename_pattern, message)
-            contents = []
             for segment in segments:
                 if len(segment) == 0:
                     continue
@@ -165,10 +165,8 @@ class DingtalkMessagesHandler:
                                     answer = ''
                                     if_in_block = False
                             if len(content.strip()) > 0:
-                                print("[{}]->[{}]: {}".format(
-                                    self.openai.chat_model,
-                                    send_to,
-                                    content.rstrip().replace("\n", "\n  | ")))
+                                print("[{}]->[{}]: {}".format(self.openai.chat_model, send_to,
+                                                              content.rstrip().replace("\n", "\n  | ")))
                                 try:
                                     await self.dingtalk.send_text(content, session_webhook)
                                 except Exception as e:
@@ -177,10 +175,8 @@ class DingtalkMessagesHandler:
                                 usage += self.openai.num_tokens_from_string(content)
 
                         if answer.endswith('\n\n') and not if_in_block and len(answer) > 100:
-                            print("[{}]->[{}]: {}".format(
-                                self.openai.chat_model,
-                                send_to,
-                                answer.rstrip().replace("\n", "\n  | ")))
+                            print("[{}]->[{}]: {}".format(self.openai.chat_model, send_to,
+                                                          answer.rstrip().replace("\n", "\n  | ")))
                             try:
                                 await self.dingtalk.send_text(answer, session_webhook)
                             except Exception as e:
@@ -399,13 +395,13 @@ async def root(request: Request):
 
     # prepare to call
     session_webhook = message['sessionWebhook']
-    senderNick = message['senderNick']
-    senderContent = message['text']['content']
+    sender_nick = message['senderNick']
+    sender_content = message['text']['content']
 
     # Concurrency Control
     if handler.is_session_webhook_in_processing(session_webhook):
         processing_message = handler.get_processing_messages(session_webhook)
-        print("[{}](忽略): {}".format(senderNick, senderContent.replace("\n", "\n  | ")))
+        print("[{}](忽略): {}".format(sender_nick, sender_content.replace("\n", "\n  | ")))
 
         return {
             "msgtype": "markdown",
@@ -416,13 +412,13 @@ async def root(request: Request):
             }
         }
 
-    print("[{}]: {}".format(senderNick, senderContent.replace("\n", "\n  | ")))
+    print("[{}]: {}".format(sender_nick, sender_content.replace("\n", "\n  | ")))
 
     # call openai
     handler.handle_request({
         'session_webhook': session_webhook,
-        'send_to': senderNick,
-        'message': senderContent
+        'send_to': sender_nick,
+        'message': sender_content
     })
 
     # Do not reply now, reply later using webhook method.
