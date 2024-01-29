@@ -26,7 +26,7 @@ class DingtalkMessagesHandler:
     Processing messages received from DingTalk users.
     """
 
-    def __init__(self, if_stream=True, number_workers=5):
+    def __init__(self, if_stream=True, number_workers=4):
         self.queue = Queue()
         self.dingtalk = DingtalkClient()
         self.openai = OpenaiClient(if_stream=if_stream)
@@ -277,7 +277,7 @@ async def lifespan(app: FastAPI):
 
 handler = DingtalkMessagesHandler(
     if_stream=True,
-    number_workers=8)
+    number_workers=4)
 
 app = FastAPI(lifespan=lifespan)
 
