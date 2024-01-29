@@ -109,7 +109,9 @@ class DingtalkMessagesHandler:
 
         # Hand it over to ChatGPT
         messages = [
-            {"role": "system", "content": "You are a helpful assistant. Answer in Chinese unless specified otherwise."},
+            {"role": "system", "content": "You are a helpful assistant. "
+                                          "You and the user's conversation is only one round."
+                                          "Answer in Chinese unless specified otherwise."},
             {"role": "user", "content": message}
         ]
         prompt_tokens = self.openai.num_tokens_from_messages(messages)
