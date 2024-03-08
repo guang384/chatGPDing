@@ -106,8 +106,10 @@ def _organize_iterable_response(iterable_reply):
                     yield complete_content_block, False
 
                 continue
-
-            lines = accumulated_content.splitlines()  # to lines
+            # to lines
+            # Notice: if the original string ends with a newline character ("\n", "\r", or "\r\n"),
+            # this trailing newline is ignored
+            lines = accumulated_content.splitlines() + ([""] if accumulated_content.endswith('\n') else [])
             last_code_block_start_line_index = -1
             last_code_block_end_line_index = -1
             last_code_block_backticks_number = -1
@@ -123,24 +125,23 @@ def _organize_iterable_response(iterable_reply):
                         last_code_block_start_line_index = -1
                         last_code_block_backticks_number = -1
                         last_code_block_end_line_index = index
-            if last_code_block_start_line_index > -1:
+            if last_code_block_start_line_index > -1:  # start but not end
                 complete_content_block = '\n'.join(lines[0:last_code_block_start_line_index])
-                accumulated_content = '\n'.join(lines[last_code_block_start_line_index:]) + '\n'
+                accumulated_content = '\n'.join(lines[last_code_block_start_line_index:])
                 if len(complete_content_block) > 0:
                     yield complete_content_block, False
                 continue
-            if last_code_block_start_line_index == -1:
-                if last_code_block_end_line_index == -1:
-                    parts = accumulated_content.rsplit('\n', 1)
-                    complete_content_block = parts[0]
-                    accumulated_content = parts[1]
-                    if len(complete_content_block) > 0:
-                        yield complete_content_block, False
-                else:
-                    complete_content_block = '\n'.join(lines[0:last_code_block_end_line_index+1])
-                    accumulated_content = '\n'.join(lines[last_code_block_end_line_index+1:]) + '\n'
-                    if len(complete_content_block) > 0:
-                        yield complete_content_block, False
+            if last_code_block_end_line_index == -1:  # no block
+                parts = accumulated_content.rsplit('\n', 1)
+                complete_content_block = parts[0]
+                accumulated_content = parts[1]
+                if len(complete_content_block) > 0:
+                    yield complete_content_block, False
+            else: # has block and already end
+                complete_content_block = '\n'.join(lines[0:last_code_block_end_line_index + 1])
+                accumulated_content = '\n'.join(lines[last_code_block_end_line_index + 1:])
+                if len(complete_content_block) > 0:
+                    yield complete_content_block, False
     yield accumulated_content, True
 
 
@@ -162,7 +163,7 @@ class DingtalkMessageHandler(MessageHandler):
         if self.download_dir is None:
             print("You can modify the file save directory by setting the environment variable DOWNLOAD_DIR.")
             self.download_dir = './downloads'
-        print(f"All files from DingTalk messages will be downloaded to directory: {self.download_dir}")
+        print(f"All files from DingTalk messages will be downloaded to directory: {os.path.abspath(self.download_dir)}")
 
     def check_signature(self, timestamp, sign) -> str:
         return self.dingtalk_client.check_signature(timestamp, sign)
@@ -186,7 +187,7 @@ class DingtalkMessageHandler(MessageHandler):
                                                   "but up to 10 images allowed.")
 
         # prepare contents
-        contents = []
+        multimodal_contents = []
         if re.search(MD5_FILENAME_PATTERN, content):
             segments = re.split(MD5_FILENAME_PATTERN, content)
             for segment in segments:
@@ -196,16 +197,16 @@ class DingtalkMessageHandler(MessageHandler):
                     dir_name = os.path.abspath(self.download_dir)
                     file_path = os.path.join(dir_name, segment)
                     if os.path.exists(file_path):
-                        contents.append(ImageBlock(image=file_path))
+                        multimodal_contents.append(ImageBlock(image=file_path))
                         continue
                     else:
                         images.remove(segment)
-                contents.append(TextBlock(text=segment))
+                multimodal_contents.append(TextBlock(text=segment))
 
         # prepare chat messages
         if len(images) > 0:
             # multimodal messages
-            chat_messages = [ChatMessage(role='user', content=contents)]
+            chat_messages = [ChatMessage(role='user', content=multimodal_contents)]
         else:
             # text only
             chat_messages = [ChatMessage(role='user', content=content)]
@@ -226,7 +227,9 @@ class DingtalkMessageHandler(MessageHandler):
                         usage_dict = {"in": usage.input_tokens, "out": usage.output_tokens}
                         if usage.image_tokens > 0:
                             usage_dict["img"] = usage.image_tokens
-                        message_bottom = _create_message_bottom(usage_dict, self.chatbot_client.chat_model_name)
+                        message_bottom = _create_message_bottom(usage_dict,
+                                                                self.chatbot_client.chat_model_name,
+                                                                images if len(images) > 0 else None)
                         content = content.rstrip() + message_bottom
                     await self.dingtalk_client.send_text(content, session_webhook)
                 except Exception as e:
@@ -356,17 +359,25 @@ class DingtalkMessageHandler(MessageHandler):
 
 if __name__ == '__main__':
     some_content = """
-你可以使用Python的list()函数来将一个包含中文字符的字符串拆分为数组，每个字符作为数组的一个元素。例如：
+好的,以下是一个用Python编写的Hello World程序:
 
 ```python
-    string = "你好，世界！"
-    array = list(string)
-    print(array)
+print("Hello World!")
 ```
 
-这样就可以将字符串按字符拆开成数组了。希望对你有帮助！
+这个程序只有一行代码,它使用Python内置的`print()`函数在终端或控制台上输出字符串"Hello World!"。
+
+当您运行这个Python程序时,它会在屏幕上打印出"Hello World!"。这是一个非常简单但经典的程序,通常被用作编程入门的第一个例子。
     """
     print("===")
     for seg, content_is_end in _organize_iterable_response(list(some_content)):
         print(f"{seg}")
         print("---" if not content_is_end else "===")
+
+    s1 = "一些句子\n呵呵\n"
+    s2 = "一些句子\n呵呵"
+    print(s1.splitlines())
+    print(s2.splitlines())
+
+    text= "line1\nline2\nline3\n"
+    print(text.split("\n"))

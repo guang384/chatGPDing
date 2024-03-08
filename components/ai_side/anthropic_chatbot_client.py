@@ -156,7 +156,7 @@ if __name__ == '__main__':
 
     client = AnthropicChatBotClient(enable_streaming=False)
     msgs = [
-        {"role": "user", "content": "Hello, Claude"},
+        {"role": "user", "content": "写一个Hello world"},
     ]
     result, usage = client.completions([ChatMessage(role=msg['role'], content=msg['content']) for msg in msgs])
     for chunk in result:
