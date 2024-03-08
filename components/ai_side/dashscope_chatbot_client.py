@@ -36,7 +36,7 @@ class DashscopeChatBotClient(ChatBotClient):
                  enable_multimodal: bool = None):
         super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming, enable_multimodal)
 
-    def completions(self, messages: List[ChatMessage], system: str | None = None) -> tuple[Iterable[str], TokenUsage]:
+    def completions(self, messages: List[ChatMessage], system: str = None) -> tuple[Iterable[str], TokenUsage]:
         chat_messages = [{
             "role": "system",
             "content": [

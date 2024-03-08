@@ -65,7 +65,7 @@ class OpenaiChatBotClient(ChatBotClient):
     def server_type(self) -> ChatBotServerType:
         return ChatBotServerType.OpenAI
 
-    def completions(self, messages: List[ChatMessage], system: str | None = None):
+    def completions(self, messages: List[ChatMessage], system: str = None):
         # messages = [
         #     {
         #         "role": "user",

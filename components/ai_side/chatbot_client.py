@@ -114,7 +114,7 @@ class ChatBotClient(ABC):
     @abstractmethod
     def completions(self,
                     messages: List[ChatMessage],
-                    system: str | None = None) -> tuple[Iterable[str], TokenUsage]:
+                    system: str = None) -> tuple[Iterable[str], TokenUsage]:
         raise NotImplementedError
 
 
