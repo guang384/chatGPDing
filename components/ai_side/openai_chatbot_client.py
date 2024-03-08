@@ -15,7 +15,7 @@ from components.ai_side.chatbot_client import ChatMessage, ChatBotServerType, Ch
 logging.basicConfig(level=logging.WARN)
 
 
-def _build_messages(messages: List[ChatMessage], system: str | None = None) -> Iterable[ChatCompletionMessageParam]:
+def _build_messages(messages: List[ChatMessage], system: str = None) -> Iterable[ChatCompletionMessageParam]:
     completion_messages = []
     if system is not None:
         completion_messages.append(ChatCompletionSystemMessageParam(role="system", content=system))
@@ -51,7 +51,7 @@ class OpenaiChatBotClient(ChatBotClient):
                  base_url: str = None,
                  preset_system_prompt: str = None,
                  tiktoken_encoding_tokens_model='gpt-4'):
-        super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming,False)
+        super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming, False)
 
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
 

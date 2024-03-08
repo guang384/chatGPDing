@@ -6,7 +6,7 @@ from typing import List
 
 import chardet
 
-from components.ai_side.chatbot_client import ChatBotClient, ChatMessage, ContextLengthExceededException, TokenUsage, \
+from components.ai_side.chatbot_client import ChatBotClient, ChatMessage, ContextLengthExceededException, \
     UnsupportedMultiModalMessageError, ImageBlock, TextBlock, UploadingTooManyImagesException, \
     DisabledMultiModalConversation
 from components.im_side.dingtalk_client import DingtalkClient
@@ -367,6 +367,6 @@ if __name__ == '__main__':
 这样就可以将字符串按字符拆开成数组了。希望对你有帮助！
     """
     print("===")
-    for segment, content_is_end in _organize_iterable_response(list(some_content)):
-        print(f"{segment}")
+    for seg, content_is_end in _organize_iterable_response(list(some_content)):
+        print(f"{seg}")
         print("---" if not content_is_end else "===")
