@@ -45,8 +45,8 @@ class DingtalkClient:
         if rewrite_pathname is None:
             self.rewrite_pathname = os.getenv("REWRITE_DINGTALK_PATHNAME")
         if self.rewrite_host is not None:
-            print("rewrite http://oapi.dingtalk.com/robot/sendBySession to http://%s/%s" % (
-                self.rewrite_host, self.rewrite_pathname))
+            print("Rewrite the base URL of Dingtalk Server from %s to http://%s/%s."
+                  % ("http://oapi.dingtalk.com/robot/sendBySession", self.rewrite_host, self.rewrite_pathname))
 
         if app_keys is None:
             self.app_keys = os.getenv("DINGTALK_APP_KEY")
@@ -65,20 +65,20 @@ class DingtalkClient:
             return session_webhook
         return urlunparse(urlparse(session_webhook)._replace(netloc=self.rewrite_host, path=self.rewrite_pathname))
 
-    def check_signature(self, timestamp, sign):
+    def check_signature(self, timestamp, signature) -> str:
         """
         check_signature
         :param timestamp:
-        :param sign:
+        :param signature:
         :return: app_key
         """
         for index, secret_key in enumerate(self.secret_keys.split(',')):
             contents = timestamp + "\n" + secret_key
             signed = _hmac_sha256_base64_encode(secret_key, contents)
-            if signed == sign:
+            if signed == signature:
                 return self.app_keys.split(',')[index]
-        print("DINGTALK_APP_SECRET not right.", secret_key)
-        raise HTTPException(status_code=401, detail="DingTalk signature verification failed.")
+        print("DINGTALK_APP_SECRET not right.", self.secret_keys)
+        raise SystemError("DingTalk signature verification failed.")
 
     async def send_markdown(self, title, text, session_webhook):
         url = session_webhook
@@ -107,11 +107,11 @@ class DingtalkClient:
         url = self._rewrite_session_webhook(url)
 
         headers = {'Content-Type': 'application/json'}
+        dingtalk_start_time = time.perf_counter()
         try:
             print("Sending messages to {} ...".format(url))
 
             payload = json.dumps(data)
-            dingtalk_start_time = time.perf_counter()
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, data=payload, headers=headers) as response:
                     dingtalk_end_time = time.perf_counter()
@@ -168,10 +168,9 @@ class DingtalkClient:
             'x-acs-dingtalk-access-token': access_token,
             'Content-Type': 'application/json'
         }
+        dingtalk_api_start_time = time.perf_counter()
         try:
             print("Require  download url of [{}]{} ...".format(app_key, download_code))
-
-            dingtalk_api_start_time = time.perf_counter()
             async with aiohttp.ClientSession() as session:
                 async with session.post(api_url, data=payload, headers=headers) as response:
                     dingtalk_api_end_time = time.perf_counter()
