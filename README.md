@@ -2,6 +2,8 @@
 
 A DingTalk robot that integrates various model API services.
 
+#### NEED PYTHON=3.9 +
+
 > **Available model API services:** 
 > - Anthropic(Claude3)
 > - OpenAI(GPT-3.5/4,Service compatible with OpenAI API.)
@@ -27,7 +29,9 @@ DingTalk document
 Use virtualenv
 > pip3 install virtualenv
 > 
-> virtualenv venv
+> sudo apt install python3.9
+>
+> virtualenv --python=python3.9 venv
 > 
 > source venv/bin/activate
 > 
