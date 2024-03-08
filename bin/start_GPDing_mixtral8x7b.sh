@@ -1,0 +1,24 @@
+#!/bin/bash
+
+source secure_key_setup.sh
+
+cd /home/cui/chatGPDing
+
+export CHATBOT_SERVER_TYPE=openai
+
+export CHATBOT_SERVER_API_KEY=$GROQ_API_KEY
+export CHATBOT_SERVER_BASE_URL=$GROQ_BASE_URL
+
+export CHATBOT_SERVER_CHAT_MODEL=mixtral-8x7b-32768
+
+export CHATBOT_SERVER_STREAMING_ENABLE=false
+export CHATBOT_SERVER_MULTIMODAL_ENABLE=false
+
+export MESSAGE_HANDLER_WORKER_THREADS=2
+
+export DINGTALK_APP_KEY=$DINGTALK_APP_KEY_MIXTRAL
+export DINGTALK_APP_SECRET=$DINGTALK_APP_SECRET_MIXTRAL
+
+export SERVER_PORT=8056
+
+source venv/bin/activate && python main.py

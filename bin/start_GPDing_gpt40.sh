@@ -1,0 +1,24 @@
+#!/bin/bash
+
+source secure_key_setup.sh
+
+cd /home/cui/chatGPDing
+
+export CHATBOT_SERVER_TYPE=openai
+
+export CHATBOT_SERVER_API_KEY=$OPENAI_API_KEY
+export CHATBOT_SERVER_BASE_URL=$OPENAI_BASE_URL
+
+export CHATBOT_SERVER_CHAT_MODEL=gpt-4-turbo-preview
+
+export CHATBOT_SERVER_STREAMING_ENABLE=true
+export CHATBOT_SERVER_MULTIMODAL_ENABLE=false
+
+export MESSAGE_HANDLER_WORKER_THREADS=2
+
+export DINGTALK_APP_KEY=$DINGTALK_APP_KEY_GPT40
+export DINGTALK_APP_SECRET=$DINGTALK_APP_SECRET_GPT40
+
+export SERVER_PORT=8040
+
+source venv/bin/activate && python main.py
