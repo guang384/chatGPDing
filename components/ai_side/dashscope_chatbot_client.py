@@ -15,9 +15,6 @@ logging.basicConfig(level=logging.WARN)
 
 
 class DashscopeChatBotClient(ChatBotClient):
-    @property
-    def chat_model_name(self) -> str:
-        return self.model_name
 
     DEFAULT_SYSTEM_PROMPT = "你是达摩院的生活助手机器人。除非特别说明，请使用中文回复。"
 

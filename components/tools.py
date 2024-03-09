@@ -39,3 +39,7 @@ def image_to_base64(image_path):
     with open(image_path, 'rb') as img:
         base64_data = base64.b64encode(img.read())
         return base64_data.decode('utf-8')
+
+
+def is_true(string: str) -> bool:
+    return string is not None and string.lower() == 'true'

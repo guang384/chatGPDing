@@ -115,10 +115,6 @@ class AnthropicChatBotClient(ChatBotClient):
         self.client = Anthropic(api_key=self.api_key, base_url=self.base_url)
 
     @property
-    def chat_model_name(self) -> str:
-        return self.model_name
-
-    @property
     def server_type(self) -> ChatBotServerType:
         return ChatBotServerType.Anthropic
 

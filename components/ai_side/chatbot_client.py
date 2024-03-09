@@ -5,6 +5,8 @@ from typing import Iterable, Literal, Union, List
 
 from pydantic import BaseModel
 
+from components.tools import is_true
+
 
 class ChatBotServerType(Enum):
     DashScope = "dashscope"
@@ -83,13 +85,13 @@ class ChatBotClient(ABC):
             self.model_name = self.DEFAULT_MODEL_NAME
         print("Chatbot server use model:", self.model_name)
 
-        self.enable_streaming = bool(os.getenv(ChatBotServerEnv.ENABLE_STREAMING.value))
+        self.enable_streaming = is_true(os.getenv(ChatBotServerEnv.ENABLE_STREAMING.value))
         if not self.enable_streaming and enable_streaming is not None:
             self.enable_streaming = enable_streaming
         if self.enable_streaming:
             print("Chatbot server streaming response enabled")
 
-        self.enable_multimodal = bool(os.getenv(ChatBotServerEnv.ENABLE_MULTIMODAL.value))
+        self.enable_multimodal = is_true(os.getenv(ChatBotServerEnv.ENABLE_MULTIMODAL.value))
         if not self.enable_multimodal and enable_multimodal is not None:
             self.enable_multimodal = enable_multimodal
         if self.enable_multimodal:
@@ -107,9 +109,16 @@ class ChatBotClient(ABC):
         raise NotImplementedError
 
     @property
-    @abstractmethod
     def chat_model_name(self) -> str:
-        raise NotImplementedError
+        return self.model_name
+
+    @property
+    def stream_enabled(self) -> bool:
+        return self.enable_streaming
+
+    @property
+    def multimodal_enabled(self) -> bool:
+        return self.enable_multimodal
 
     @abstractmethod
     def completions(self,

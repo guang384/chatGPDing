@@ -34,10 +34,6 @@ def _build_messages(messages: List[ChatMessage], system: str = None) -> Iterable
 
 
 class OpenaiChatBotClient(ChatBotClient):
-    @property
-    def chat_model_name(self) -> str:
-        return self.model_name
-
     DEFAULT_SYSTEM_PROMPT = ("You are a helpful assistant. "
                              "You and the user's conversation is only one round."
                              "Answer in Chinese unless specified otherwise.")
@@ -166,8 +162,8 @@ class IterableMessageChunk:
 if __name__ == '__main__':
     os.environ['CHATBOT_SERVER_API_KEY'] = os.environ.get('OPENAI_API_KEY')
     os.environ['CHATBOT_SERVER_BASE_URL'] = os.environ.get('OPENAI_BASE_URL')
-
-    client = OpenaiChatBotClient(enable_streaming=False)
+    os.environ['CHATBOT_SERVER_STREAMING_ENABLE'] = 'false'
+    client = OpenaiChatBotClient()
     msgs = [
         {"role": "user", "content": "Hello, Claude"},
     ]

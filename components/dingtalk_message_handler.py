@@ -8,7 +8,7 @@ import chardet
 
 from components.ai_side.chatbot_client import ChatBotClient, ChatMessage, ContextLengthExceededException, \
     UnsupportedMultiModalMessageError, ImageBlock, TextBlock, UploadingTooManyImagesException, \
-    DisabledMultiModalConversation
+    DisabledMultiModalConversation, TokenUsage
 from components.im_side.dingtalk_client import DingtalkClient
 from components.message_handler import MessageHandler, QueuedRequest, ConcurrentRequestException
 from components.tools import download_file, truncate_string
@@ -35,11 +35,15 @@ def _create_unknown_msgtype_message(message):
     }
 
 
-def _create_message_bottom(usage, chat_model_name: str, file_names: List[str] = None):
-    if file_names is None:
-        return f"\n\n( --- Used up {usage} tokens. --- )\n( --- {chat_model_name} --- )"
+def _create_message_bottom(usage: TokenUsage, chat_model_name: str, file_names: List[str] = None):
+    usage_dict = {"in": usage.input_tokens, "out": usage.output_tokens}
+    if usage.image_tokens > 0:
+        usage_dict["img"] = usage.image_tokens
+
+    if file_names is None or len(file_names) == 0:
+        return f"\n\n( --- Used up {usage_dict} tokens. --- )\n( --- {chat_model_name} --- )"
     else:
-        return f"\n\n( --- {file_names} --- )\n( --- Used up {usage} tokens. --- )\n( --- {chat_model_name} --- )"
+        return f"\n\n( --- {file_names} --- )\n( --- Used up {usage_dict} tokens. --- )\n( --- {chat_model_name} --- )"
 
 
 def _create_empty_message():
@@ -221,28 +225,19 @@ class DingtalkMessageHandler(MessageHandler):
             end_time = time.perf_counter()
             print("Message received from chatbot server start at {:.3f} s.".format((end_time - start_time)))
 
-            need_resend = ""
-            # organize iterable response
-            for content, is_end in _organize_iterable_response(iterable_reply):
-                try:
+            if not self.chatbot_client.stream_enabled:
+                content = list(iterable_reply)[0]
+                content += _create_message_bottom(usage, self.chatbot_client.chat_model_name, images)
+                await self.send_message_to_dingtalk(session_webhook, send_to, content)
+            else:
+                need_resend = ""
+                # organize iterable response
+                for content, is_end in _organize_iterable_response(iterable_reply):
+                    content = need_resend + content.rstrip()
                     if is_end:
-                        usage_dict = {"in": usage.input_tokens, "out": usage.output_tokens}
-                        if usage.image_tokens > 0:
-                            usage_dict["img"] = usage.image_tokens
-                        message_bottom = _create_message_bottom(usage_dict,
-                                                                self.chatbot_client.chat_model_name,
-                                                                images if len(images) > 0 else None)
-                        content = need_resend + content.rstrip() + message_bottom
-
-                    print("[{}]->[{}]: {}".format(self.chatbot_client.chat_model_name, send_to,
-                                                  content.rstrip().replace("\n", "\n  | ")))
-                    await self.dingtalk_client.send_text(content, session_webhook)
-                    need_resend = ''
-                except Exception as e:
-                    print("Send answer to dingtalk Failed,"
-                          "The current message failed to send and is waiting to be resent.", e.args)
-                    need_resend += "\n\n" + content
-                    continue
+                        content += _create_message_bottom(usage, self.chatbot_client.chat_model_name, images)
+                    success = await self.send_message_to_dingtalk(session_webhook, send_to, content)
+                    need_resend = "" if success else (need_resend + "\n\n" + content)
 
             print("Request chatbot server duration: {:.3f} s. Estimated completion Tokens: {}.".format(
                 (end_time - start_time), usage))
@@ -277,6 +272,17 @@ class DingtalkMessageHandler(MessageHandler):
                     "我错了 orz",
                     "<font color=silver>完，出错啦！暂时没法用咯…… 等会再试试吧 [傻笑] <br />(%s)" % str(e.args),
                     session_webhook)
+
+    async def send_message_to_dingtalk(self, session_webhook, send_to, content) -> bool:
+        print("[{}]->[{}]: {}".format(self.chatbot_client.chat_model_name, send_to,
+                                      content.rstrip().replace("\n", "\n  | ")))
+        try:
+            await self.dingtalk_client.send_text(content, session_webhook)
+        except Exception as e:
+            print("Send answer to dingtalk Failed,"
+                  "The current message failed to send and is waiting to be resent.", e.args)
+            return False
+        return True
 
     async def handle_message_from_dingtalk(self, app_key: str, message: dict) -> dict:
         """
