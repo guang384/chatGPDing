@@ -99,10 +99,13 @@ def _organize_iterable_response(iterable_reply):
                 continue
 
             if '```' not in accumulated_content:
-                parts = accumulated_content.rsplit('\n', 1)
+                parts = accumulated_content.rsplit('\n\n', 1)
                 complete_content_block = parts[0]
-                if len(complete_content_block) > 30:
-                    accumulated_content = parts[1]
+                if len(complete_content_block) > 100:
+                    if len(parts) > 1:
+                        accumulated_content = parts[1]
+                    else:
+                        accumulated_content = ''
                     yield complete_content_block, False
 
                 continue
@@ -137,7 +140,7 @@ def _organize_iterable_response(iterable_reply):
                 accumulated_content = parts[1]
                 if len(complete_content_block) > 0:
                     yield complete_content_block, False
-            else: # has block and already end
+            else:  # has block and already end
                 complete_content_block = '\n'.join(lines[0:last_code_block_end_line_index + 1])
                 accumulated_content = '\n'.join(lines[last_code_block_end_line_index + 1:])
                 if len(complete_content_block) > 0:
@@ -218,10 +221,9 @@ class DingtalkMessageHandler(MessageHandler):
             end_time = time.perf_counter()
             print("Message received from chatbot server start at {:.3f} s.".format((end_time - start_time)))
 
+            need_resend = ""
             # organize iterable response
             for content, is_end in _organize_iterable_response(iterable_reply):
-                print("[{}]->[{}]: {}".format(self.chatbot_client.chat_model_name, send_to,
-                                              content.rstrip().replace("\n", "\n  | ")))
                 try:
                     if is_end:
                         usage_dict = {"in": usage.input_tokens, "out": usage.output_tokens}
@@ -230,11 +232,18 @@ class DingtalkMessageHandler(MessageHandler):
                         message_bottom = _create_message_bottom(usage_dict,
                                                                 self.chatbot_client.chat_model_name,
                                                                 images if len(images) > 0 else None)
-                        content = content.rstrip() + message_bottom
+                        content = need_resend + content.rstrip() + message_bottom
+
+                    print("[{}]->[{}]: {}".format(self.chatbot_client.chat_model_name, send_to,
+                                                  content.rstrip().replace("\n", "\n  | ")))
                     await self.dingtalk_client.send_text(content, session_webhook)
+                    need_resend = ''
                 except Exception as e:
-                    print("Send answer to dingtalk Failed", e.args)
+                    print("Send answer to dingtalk Failed,"
+                          "The current message failed to send and is waiting to be resent.", e.args)
+                    need_resend += "\n\n" + content
                     continue
+
             print("Request chatbot server duration: {:.3f} s. Estimated completion Tokens: {}.".format(
                 (end_time - start_time), usage))
 
@@ -379,5 +388,5 @@ print("Hello World!")
     print(s1.splitlines())
     print(s2.splitlines())
 
-    text= "line1\nline2\nline3\n"
+    text = "line1\nline2\nline3\n"
     print(text.split("\n"))
