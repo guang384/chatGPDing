@@ -45,8 +45,9 @@ class DingtalkClient:
         if rewrite_pathname is None:
             self.rewrite_pathname = os.getenv("REWRITE_DINGTALK_PATHNAME")
         if self.rewrite_host is not None:
-            print("Rewrite the base URL of Dingtalk Server from %s to http://%s/%s."
-                  % ("http://oapi.dingtalk.com/robot/sendBySession", self.rewrite_host, self.rewrite_pathname))
+            print("Rewrite the base URL of Dingtalk Server from %s to %s."
+                  % ("https://oapi.dingtalk.com/robot/sendBySession",
+                     self._rewrite_server_url("https://oapi.dingtalk.com/robot/sendBySession")))
 
         if app_keys is None:
             self.app_keys = os.getenv("DINGTALK_APP_KEY")
@@ -60,10 +61,11 @@ class DingtalkClient:
             logging.error("Need to set environment variable: DINGTALK_APP_SECRET.")
             raise ValueError("You need to set a DingTalk App Secret")
 
-    def _rewrite_session_webhook(self, session_webhook):
-        if self.rewrite_host is None:
-            return session_webhook
-        return urlunparse(urlparse(session_webhook)._replace(netloc=self.rewrite_host, path=self.rewrite_pathname))
+    def _rewrite_server_url(self, url):
+        if self.rewrite_host is None or '/v1.0/' in url:  # the `V1` interface will require whitelist verification!
+            return url
+        parsed_url = urlparse(url)
+        return urlunparse(parsed_url._replace(netloc=self.rewrite_host, path=self.rewrite_pathname + parsed_url.path))
 
     def check_signature(self, timestamp, signature) -> str:
         """
@@ -91,27 +93,48 @@ class DingtalkClient:
         }
         await self._send_to_dingtalk_server(data, url)
 
-    async def send_text(self, answer, session_webhook):
-        if len(answer.strip()) > 0:
+    async def send_text(self, text, session_webhook):
+        if len(text.strip()) > 0:
             url = session_webhook
             data = {
                 "msgtype": "text",
                 "text": {
-                    "content": answer.strip()
+                    "content": text.strip()
                 }
             }
             await self._send_to_dingtalk_server(data, url)
 
-    async def _send_to_dingtalk_server(self, data, url):
+    async def one_to_one_text(self, text, robotCode, userId, app_key):
+        if len(text.strip()) > 0:
+            url = "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend"
+            data = {
+                "robotCode": robotCode,
+                "userIds": [userId],
+                "msgKey": "sampleText",
+                "msgParam": json.dumps({
+                    "content": text.strip()
+                })
+            }
+            await self._send_to_dingtalk_server(data, url, app_key)
+
+    async def _send_to_dingtalk_server(self, data, url, app_key=None):
 
         # By using this API to send messages proactively, you can obtain a message ID,
         # which helps to identify the message when being referenced.
+        # This interface can be used to actively initiate a one-on-one chat conversation with the user.
         # https://open.dingtalk.com/document/orgapp/chatbots-send-one-on-one-chat-messages-in-batches
 
         # Sending messages through a webhook is the most convenient method, but it does not provide the message ID.
-        url = self._rewrite_session_webhook(url)
+        # Through the webhook interface, it does not require whitelist verification,
+        # but if the `V1` interface is used, it will strictly require whitelist verification!
+
+        url = self._rewrite_server_url(url)
 
         headers = {'Content-Type': 'application/json'}
+
+        if app_key is not None:
+            headers['x-acs-dingtalk-access-token'] = await self._refresh_access_token(app_key)
+
         dingtalk_start_time = time.perf_counter()
         try:
             print("Sending messages to {} ...".format(url))
@@ -124,16 +147,22 @@ class DingtalkClient:
                     dingtalk_end_time = time.perf_counter()
                     print("Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
                     response_json = await response.json()
-                    if response_json['errcode'] != 0:
-                        raise RuntimeError("Error while call dingtalk :" + json.dumps(response.json()))
+                    if 'errcode' in response_json and response_json['errcode'] != 0:  # old API response 'errcode'
+                        raise RuntimeError(
+                            "Error while call dingtalk :" + json.dumps(response_json, ensure_ascii=False))
+                    elif 'code' in response_json:  # new api (v1.0) has 'code' when error
+                        raise RuntimeError(
+                            "Error while call dingtalk :" + json.dumps(response_json, ensure_ascii=False))
+                    elif 'processQueryKey' in response_json:  # new api (v1.0) has 'processQueryKey' when sent
+                        print('Message sent successfully - ', response_json['processQueryKey'])
         except Exception as e:
             dingtalk_end_time = time.perf_counter()
             print("Error Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
             raise e
 
-    async def _refresh_access_token(self, app_key):
+    async def _refresh_access_token(self, app_key) -> str:
         if app_key not in self.access_token_expires or time.perf_counter() > self.access_token_expires[app_key]:
-            api_url = "https://oapi.dingtalk.com/gettoken"
+            api_url = self._rewrite_server_url("https://oapi.dingtalk.com/gettoken")
 
             print("Refresh access_token {} ...".format(app_key))
             params = {
@@ -147,7 +176,7 @@ class DingtalkClient:
 
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(api_url,params=params) as response:
+                    async with session.get(api_url, params=params) as response:
                         dingtalk_access_token_end_time = time.perf_counter()
                         print("Request duration: refresh access_token {:.3f} s.".format(
                             (dingtalk_access_token_end_time - dingtalk_access_token_start_time)))
@@ -166,7 +195,7 @@ class DingtalkClient:
 
     async def get_file_download_url(self, app_key, download_code):
         access_token = await self._refresh_access_token(app_key)
-        api_url = "https://api.dingtalk.com/v1.0/robot/messageFiles/download"
+        api_url = self._rewrite_server_url("https://api.dingtalk.com/v1.0/robot/messageFiles/download")
         payload = json.dumps({
             "downloadCode": download_code,
             "robotCode": app_key

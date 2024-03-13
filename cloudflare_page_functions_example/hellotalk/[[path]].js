@@ -1,14 +1,22 @@
 const targetHost = "oapi.dingtalk.com"
-const targetPathname = "robot/sendBySession"
+const targetHostV1 = "api.dingtalk.com"
+const targetPathname = ""
 
-export async  function onRequestPost(context) {	
+export async  function onRequest(context) {	
   // context -> https://developers.cloudflare.com/pages/functions/api-reference/#eventcontext
  
   const request = await context.request.clone()
 
   const url = new URL(request.url)
-  url.host = targetHost
-  url.pathname = targetPathname
+
+  if (url.pathname.startsWith('/hellotalk/v1.0/')){
+    url.host = targetHostV1
+  }else{
+    url.host = targetHost
+  }
+
+  url.pathname = url.pathname.replace('/hellotalk', '/' + targetPathname)
+
   const newUrl = url.toString()
   
   const newRequest = new Request(newUrl, request);

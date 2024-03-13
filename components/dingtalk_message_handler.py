@@ -35,6 +35,16 @@ def _create_unknown_msgtype_message(message):
     }
 
 
+def _create_do_not_rely_other_message():
+    return {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": "[裂开]啊这...",
+            "text": "<font color=silver>不要引用其他消息…… 我看不到…… [闭嘴]"
+        }
+    }
+
+
 def _create_message_bottom(usage: TokenUsage, chat_model_name: str, file_names: List[str] = None):
     usage_dict = {"in": usage.input_tokens, "out": usage.output_tokens}
     if usage.image_tokens > 0:
@@ -53,6 +63,15 @@ def _create_empty_message():
     """
     return {
         "msgtype": "empty"
+    }
+
+
+def _create_should_one_to_one_message():
+    return {
+        "msgtype": "text",
+        "text": {
+            "content": "emm... 还是小窗吧[闭嘴]"
+        }
     }
 
 
@@ -350,17 +369,29 @@ class DingtalkMessageHandler(MessageHandler):
         elif message['msgtype'] != 'text':
             return _create_unknown_msgtype_message(message)
 
+        # should one to one
+        userid = message['senderStaffId']
+        robot_code = message['robotCode']
+
+        if message['conversationType'] == '2':
+            await self.dingtalk_client.one_to_one_text("来，这边~ [坏笑]", robot_code, userid, app_key)
+            return _create_should_one_to_one_message()
+
+        # Do not rely on other messages
+        if 'originalProcessQueryKey' in message or 'originalMsgId' in message:
+            return _create_do_not_rely_other_message()
+
         # prepare to call
         session_webhook = message['sessionWebhook']
         sender_nick = message['senderNick']
         sender_content = message['text']['content']
-        userid = message['senderStaffId']
 
         # Add to queue for processing.
         request = {
             'session_webhook': session_webhook,
             'send_to': sender_nick,
             'userid': userid,
+            'robot_code': robot_code,
             'content': sender_content
         }
 
