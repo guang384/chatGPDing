@@ -103,7 +103,12 @@ class DingtalkClient:
             await self._send_to_dingtalk_server(data, url)
 
     async def _send_to_dingtalk_server(self, data, url):
-        # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
+
+        # By using this API to send messages proactively, you can obtain a message ID,
+        # which helps to identify the message when being referenced.
+        # https://open.dingtalk.com/document/orgapp/chatbots-send-one-on-one-chat-messages-in-batches
+
+        # Sending messages through a webhook is the most convenient method, but it does not provide the message ID.
         url = self._rewrite_session_webhook(url)
 
         headers = {'Content-Type': 'application/json'}
@@ -112,6 +117,8 @@ class DingtalkClient:
             print("Sending messages to {} ...".format(url))
 
             payload = json.dumps(data)
+            # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, data=payload, headers=headers) as response:
                     dingtalk_end_time = time.perf_counter()

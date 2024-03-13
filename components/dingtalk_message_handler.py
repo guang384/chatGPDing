@@ -354,13 +354,16 @@ class DingtalkMessageHandler(MessageHandler):
         session_webhook = message['sessionWebhook']
         sender_nick = message['senderNick']
         sender_content = message['text']['content']
+        userid = message['senderStaffId']
 
         # Add to queue for processing.
         request = {
             'session_webhook': session_webhook,
             'send_to': sender_nick,
+            'userid': userid,
             'content': sender_content
         }
+
         try:
             self.add_new_request_to_queue(session_webhook, request)
             print("[{}]: {}".format(sender_nick, sender_content.replace("\n", "\n  | ")))
