@@ -373,7 +373,7 @@ class DingtalkMessageHandler(MessageHandler):
         userid = message['senderStaffId']
         robot_code = message['robotCode']
 
-        if message['conversationType'] == '2':
+        if (not self.handlingGroupMessages) and message['conversationType'] == '2':
             await self.dingtalk_client.one_to_one_text("来，这边~ [坏笑]", robot_code, userid, app_key)
             return _create_should_one_to_one_message()
 

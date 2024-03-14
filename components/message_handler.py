@@ -9,9 +9,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from components.tools import is_true
+
 
 class MessageHandlerEnv(Enum):
     WORKER_THREADS = "MESSAGE_HANDLER_WORKER_THREADS"
+    ENABLE_GROUP_MESSAGES_HANDLING = "GROUP_MESSAGES_HANDLING_ENABLE"
 
 
 class QueuedRequest(BaseModel):
@@ -38,6 +41,10 @@ class MessageHandler:
             self.worker_threads = worker_threads
         if self.worker_threads < 1:
             self.worker_threads = 1
+
+        self.handlingGroupMessages = is_true(os.getenv(MessageHandlerEnv.ENABLE_GROUP_MESSAGES_HANDLING.value))
+        if self.handlingGroupMessages:
+            print("Group message handling enabled. Server is now listening for messages from groups.")
 
     def get_request_being_processed(self, unique_identifier: str) -> QueuedRequest:
         return self.processing[unique_identifier] if unique_identifier in self.processing else None

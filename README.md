@@ -74,6 +74,8 @@ export CHATBOT_SERVER_MULTIMODAL_ENABLE=false
 export CHATBOT_SERVER_SYSTEM_PROMPT=You are a very helpful assistant.
 
 export MESSAGE_HANDLER_WORKER_THREADS=2
+export GROUP_MESSAGES_HANDLING_ENABLE=true
+export ROBOTS_INTERACT_ENABLE=true          # TODO
 export SERVER_PORT=8035
 
 source venv/bin/activate && python main.py
