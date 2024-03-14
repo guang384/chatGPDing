@@ -217,7 +217,7 @@ class DingtalkMessageHandler(MessageHandler):
         if re.search(MD5_FILENAME_PATTERN, content):
             segments = re.split(MD5_FILENAME_PATTERN, content)
             for segment in segments:
-                if len(segment) == 0:
+                if len(segment.strip()) == 0:
                     continue
                 if re.search(MD5_FILENAME_PATTERN, segment):
                     dir_name = os.path.abspath(self.download_dir)
@@ -326,7 +326,7 @@ class DingtalkMessageHandler(MessageHandler):
             file_path = download_file(image_url, self.download_dir)
             # process as normal text message
             message['text'] = {
-                "content": os.path.basename(file_path) + ' 这是什么?'
+                "content": os.path.basename(file_path)
             }
 
         elif message['msgtype'] == 'richText':
