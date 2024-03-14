@@ -13,8 +13,6 @@ from components.ai_side.chatbot_client import ChatMessage, ChatBotServerType, Ch
     DisabledMultiModalConversation
 from components.tools import image_to_base64
 
-logging.basicConfig(level=logging.WARN)
-
 
 def _calculate_tokens_of_images(messages: List[ChatMessage], enable_multimodal=False) -> int:
     total_tokens = 0
@@ -91,6 +89,14 @@ class IterableMessageChunk:
 
 
 class AnthropicChatBotClient(ChatBotClient):
+    @property
+    def supports_streaming_response(self) -> bool:
+        return True
+
+    @property
+    def has_multi_modal_ability(self) -> bool:
+        return True
+
     DEFAULT_SYSTEM_PROMPT = ("The assistant is Claude, created by Anthropic."
                              "Unless otherwise specified, answer in Chinese."
                              "It should give concise responses to very simple questions, "
@@ -104,12 +110,12 @@ class AnthropicChatBotClient(ChatBotClient):
     # claude-3-opus-20240229
 
     def __init__(self,
-                 api_key=None,
-                 base_url: str = None,
-                 model_name: str = None,
-                 preset_system_prompt: str = None,
-                 enable_streaming: bool = None,
-                 enable_multimodal: bool = None):
+                 api_key: str,
+                 base_url: str,
+                 model_name: str,
+                 preset_system_prompt: str,
+                 enable_streaming: bool,
+                 enable_multimodal: bool):
         super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming, enable_multimodal)
 
         self.client = Anthropic(api_key=self.api_key, base_url=self.base_url)

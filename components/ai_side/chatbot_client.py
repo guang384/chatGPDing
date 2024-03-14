@@ -1,3 +1,4 @@
+import logging
 import os
 from abc import abstractmethod, ABC
 from enum import Enum
@@ -6,21 +7,6 @@ from typing import Iterable, Literal, Union, List
 from pydantic import BaseModel
 
 from components.tools import is_true
-
-
-class ChatBotServerType(Enum):
-    DashScope = "dashscope"
-    OpenAI = "openai"
-    Anthropic = "anthropic"
-
-
-class ChatBotServerEnv(Enum):
-    API_KEY = "CHATBOT_SERVER_API_KEY"
-    BASE_URL = "CHATBOT_SERVER_BASE_URL"
-    MODEL_NAME = "CHATBOT_SERVER_CHAT_MODEL"
-    PRESET_SYSTEM_PROMPT = "CHATBOT_SERVER_SYSTEM_PROMPT"
-    ENABLE_STREAMING = "CHATBOT_SERVER_STREAMING_ENABLE"
-    ENABLE_MULTIMODAL = "CHATBOT_SERVER_MULTIMODAL_ENABLE"
 
 
 class ImageBlock(BaseModel):
@@ -58,50 +44,38 @@ class UploadingTooManyImagesException(Exception):
     pass
 
 
+class ChatBotServerType(Enum):
+    DashScope = "dashscope"
+    OpenAI = "openai"
+    Anthropic = "anthropic"
+
+
 class ChatBotClient(ABC):
     DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant. "
 
     DEFAULT_MODEL_NAME = "Need to set environment variable: CHATBOT_SERVER_MODEL_NAME"
 
     def __init__(self,
-                 api_key: str = None,
+                 api_key: str,
                  base_url: str = None,
                  model_name: str = None,
                  preset_system_prompt: str = None,
                  enable_streaming: bool = None,
-                 enable_multimodal: bool = None):
+                 enable_multimodal: bool = None, ):
+        self.api_key = api_key
+        self.base_url = base_url
 
-        self.api_key = api_key if api_key is not None else os.environ.get(ChatBotServerEnv.API_KEY.value)
-        if self.api_key is None:
-            raise SystemError(f"Need to set environment variable: {ChatBotServerEnv.API_KEY.value}.")
+        self.model_name = self.DEFAULT_MODEL_NAME if model_name is None else model_name
+        self.preset_system_prompt = self.DEFAULT_SYSTEM_PROMPT if preset_system_prompt is None else preset_system_prompt
 
-        self.base_url = base_url if base_url is not None else os.environ.get(ChatBotServerEnv.BASE_URL.value)
-        if self.base_url is not None:
-            print("Rewrite the base URL of Chatbot Server to %s." % self.base_url)
-
-        self.model_name = model_name if model_name is not None else os.environ.get(ChatBotServerEnv.MODEL_NAME.value)
-        ''' https://docs.anthropic.com/claude/docs/models-overview '''
-        if self.model_name is None:
-            self.model_name = self.DEFAULT_MODEL_NAME
-        print("Chatbot server use model:", self.model_name)
-
-        self.enable_streaming = is_true(os.getenv(ChatBotServerEnv.ENABLE_STREAMING.value))
-        if not self.enable_streaming and enable_streaming is not None:
-            self.enable_streaming = enable_streaming
-        if self.enable_streaming:
-            print("Chatbot server streaming response enabled")
-
-        self.enable_multimodal = is_true(os.getenv(ChatBotServerEnv.ENABLE_MULTIMODAL.value))
-        if not self.enable_multimodal and enable_multimodal is not None:
-            self.enable_multimodal = enable_multimodal
-        if self.enable_multimodal:
-            print("Chatbot server multimodal conversation enabled")
-
-        self.preset_system_prompt = os.environ.get(ChatBotServerEnv.PRESET_SYSTEM_PROMPT.value)
-        if preset_system_prompt is not None:
-            self.preset_system_prompt = preset_system_prompt
-        if preset_system_prompt is None:
-            self.preset_system_prompt = self.DEFAULT_SYSTEM_PROMPT
+        self.enable_streaming = self.supports_streaming_response if enable_streaming is None else enable_streaming
+        if self.enable_streaming and not self.supports_streaming_response:
+            logging.warning("The service has enabled the stream response mode through configuration, "
+                            "but the service does not support this mode yet.")
+        self.enable_multimodal = self.has_multi_modal_ability if enable_multimodal is None else enable_multimodal
+        if self.enable_multimodal and not self.has_multi_modal_ability:
+            logging.warning("The multimodal capability has been enabled through configuration, "
+                            "but the service does not yet support this capability.")
 
     @property
     @abstractmethod
@@ -117,8 +91,18 @@ class ChatBotClient(ABC):
         return self.enable_streaming
 
     @property
+    @abstractmethod
+    def supports_streaming_response(self) -> bool:
+        raise NotImplementedError
+
+    @property
     def multimodal_enabled(self) -> bool:
         return self.enable_multimodal
+
+    @property
+    @abstractmethod
+    def has_multi_modal_ability(self) -> bool:
+        raise NotImplementedError
 
     @abstractmethod
     def completions(self,

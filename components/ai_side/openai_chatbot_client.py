@@ -1,8 +1,6 @@
 import os
 from typing import Iterable, List
 
-import logging
-
 import openai
 import tiktoken
 from openai import OpenAI, Stream
@@ -11,8 +9,6 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionSystemMe
 
 from components.ai_side.chatbot_client import ChatMessage, ChatBotServerType, ChatBotClient, TokenUsage, \
     ContextLengthExceededException, UnsupportedMultiModalMessageError
-
-logging.basicConfig(level=logging.WARN)
 
 
 def _build_messages(messages: List[ChatMessage], system: str = None) -> Iterable[ChatCompletionMessageParam]:
@@ -34,6 +30,14 @@ def _build_messages(messages: List[ChatMessage], system: str = None) -> Iterable
 
 
 class OpenaiChatBotClient(ChatBotClient):
+    @property
+    def supports_streaming_response(self) -> bool:
+        return True
+
+    @property
+    def has_multi_modal_ability(self) -> bool:
+        return False
+
     DEFAULT_SYSTEM_PROMPT = ("You are a helpful assistant. "
                              "You and the user's conversation is only one round."
                              "Answer in Chinese unless specified otherwise.")
@@ -41,13 +45,14 @@ class OpenaiChatBotClient(ChatBotClient):
     DEFAULT_MODEL_NAME = "gpt-3.5-turbo"
 
     def __init__(self,
-                 api_key=None,
-                 model_name: str = None,
-                 enable_streaming: bool = None,
-                 base_url: str = None,
-                 preset_system_prompt: str = None,
+                 api_key,
+                 base_url: str,
+                 model_name: str,
+                 preset_system_prompt: str,
+                 enable_streaming: bool,
+                 enable_multimodal: bool,
                  tiktoken_encoding_tokens_model='gpt-4'):
-        super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming, False)
+        super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming, enable_multimodal)
 
         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
 
@@ -96,7 +101,8 @@ class OpenaiChatBotClient(ChatBotClient):
 
     def num_tokens_from_string(self, string) -> int:
         """Return the number of tokens used by a string."""
-
+        if string is None:
+            return 0
         return len(self.tiktoken_encoding.encode(string))
 
     def _num_tokens_from_messages(self, messages, model=None):
@@ -151,8 +157,17 @@ class IterableMessageChunk:
         try:
             chunk = self.chunks.__next__()
             chunk_content = chunk.choices[0].delta.content
+
+            self.token_usage.output_tokens += self.chatbot_client.num_tokens_from_string(chunk_content)
+            chunk_dict = dict(chunk)
+            if 'usage' in chunk_dict and 'lastOne' in chunk_dict and chunk_dict['lastOne']:  # Adapting to 01.AI
+                self.token_usage.input_tokens = chunk_dict['usage']['completion_tokens']
+                self.token_usage.output_tokens = chunk_dict['usage']['prompt_tokens']
+            elif 'x_groq' in chunk_dict and 'usage' in chunk_dict['x_groq']:  # Adapting to Grok
+                self.token_usage.input_tokens = chunk_dict['x_groq']['usage']['completion_tokens']
+                self.token_usage.output_tokens = chunk_dict['x_groq']['usage']['prompt_tokens']
+
             if chunk_content is not None and len(chunk_content) > 0:
-                self.token_usage.output_tokens += self.chatbot_client.num_tokens_from_string(chunk_content)
                 return chunk_content
             return ""
         except StopIteration:

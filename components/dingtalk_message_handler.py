@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import time
@@ -9,6 +10,7 @@ import chardet
 from components.ai_side.chatbot_client import ChatBotClient, ChatMessage, ContextLengthExceededException, \
     UnsupportedMultiModalMessageError, ImageBlock, TextBlock, UploadingTooManyImagesException, \
     DisabledMultiModalConversation, TokenUsage
+from components.ai_side.chatbot_client_builder import ChatBotClientBuilder
 from components.im_side.dingtalk_client import DingtalkClient
 from components.message_handler import MessageHandler, QueuedRequest, ConcurrentRequestException
 from components.tools import download_file, truncate_string
@@ -126,11 +128,10 @@ def _organize_iterable_response(iterable_reply):
                 complete_content_block = parts[0]
                 if len(complete_content_block) > 100:
                     if len(parts) > 1:
-                        accumulated_content = parts[1]
-                    else:
-                        accumulated_content = ''
-                    yield complete_content_block, False
-
+                        remaining_content = parts[1]
+                        if len(remaining_content) > 0:
+                            accumulated_content = remaining_content
+                            yield complete_content_block, False
                 continue
             # to lines
             # Notice: if the original string ends with a newline character ("\n", "\r", or "\r\n"),
@@ -153,20 +154,27 @@ def _organize_iterable_response(iterable_reply):
                         last_code_block_end_line_index = index
             if last_code_block_start_line_index > -1:  # start but not end
                 complete_content_block = '\n'.join(lines[0:last_code_block_start_line_index])
-                accumulated_content = '\n'.join(lines[last_code_block_start_line_index:])
+                remaining_content = '\n'.join(lines[last_code_block_start_line_index:])
                 if len(complete_content_block) > 0:
-                    yield complete_content_block, False
+                    # Since the return is an iteration that has not ended,
+                    # it is necessary to ensure that there is some remaining content,
+                    # otherwise the last iteration return may be empty content.
+                    if len(remaining_content) > 0:
+                        accumulated_content = remaining_content
+                        yield complete_content_block, False
                 continue
             if last_code_block_end_line_index == -1:  # no block
                 parts = accumulated_content.rsplit('\n', 1)
                 complete_content_block = parts[0]
-                accumulated_content = parts[1]
-                if len(complete_content_block) > 0:
+                remaining_content = parts[1]
+                if len(complete_content_block) > 0 and len(remaining_content) > 0:
+                    accumulated_content = remaining_content
                     yield complete_content_block, False
             else:  # has block and already end
                 complete_content_block = '\n'.join(lines[0:last_code_block_end_line_index + 1])
-                accumulated_content = '\n'.join(lines[last_code_block_end_line_index + 1:])
-                if len(complete_content_block) > 0:
+                remaining_content = '\n'.join(lines[last_code_block_end_line_index + 1:])
+                if len(complete_content_block) > 0 and len(remaining_content) > 0:
+                    accumulated_content = remaining_content
                     yield complete_content_block, False
     yield accumulated_content, True
 
@@ -177,32 +185,34 @@ MD5_FILENAME_PATTERN = r"([0-9A-F]{8}\.png|[0-9A-F]{8}\.jpg)"
 
 class DingtalkMessageHandler(MessageHandler):
     def __init__(self,
-                 chatbot_client: ChatBotClient,
+                 chatbot_client_builder: ChatBotClientBuilder,
                  dingtalk_client: DingtalkClient,
                  download_dir: str = None,
                  worker_threads: int = None):
-        super().__init__(worker_threads=worker_threads)
-        self.chatbot_client = chatbot_client
+        super().__init__(chatbot_client_builder, worker_threads=worker_threads)
         self.dingtalk_client = dingtalk_client
 
         self.download_dir = download_dir if download_dir is not None else os.getenv("DOWNLOAD_DIR")
         if self.download_dir is None:
-            print("You can modify the file save directory by setting the environment variable DOWNLOAD_DIR.")
+            logging.info("You can modify the file save directory by setting the environment variable DOWNLOAD_DIR.")
             self.download_dir = './downloads'
-        print(f"All files from DingTalk messages will be downloaded to directory: {os.path.abspath(self.download_dir)}")
+        logging.info(f"All files from DingTalk messages will be downloaded to directory: "
+                     f"{os.path.abspath(self.download_dir)}")
 
     def check_signature(self, timestamp, sign) -> str:
         return self.dingtalk_client.check_signature(timestamp, sign)
 
-    async def process_request(self, request: QueuedRequest) -> None:
+    async def process_request(self, request: QueuedRequest, chatbot_client: ChatBotClient) -> None:
         """
         Call the chatbot to process specific messages.
+        :param chatbot_client:
         :param request:
         :return:
         """
         session_webhook = request.parameters["session_webhook"]
         send_to = request.parameters["send_to"]
         content = request.parameters["content"]
+        is_group_chat = request.parameters["is_group_chat"]
 
         # check content
         # If the file content contains image names and the images exist, use a multimodal model to answer.
@@ -240,30 +250,43 @@ class DingtalkMessageHandler(MessageHandler):
         # send to chatbot server and get reply
         start_time = time.perf_counter()
         try:
-            iterable_reply, usage = self.chatbot_client.completions(chat_messages)
+            iterable_reply, usage = chatbot_client.completions(chat_messages)
             end_time = time.perf_counter()
-            print("Message received from chatbot server start at {:.3f} s.".format((end_time - start_time)))
+            logging.info("Message received from chatbot server start at {:.3f} s by {}"
+                         .format((end_time - start_time), chatbot_client))
 
-            if not self.chatbot_client.stream_enabled:
-                content = list(iterable_reply)[0]
-                content += _create_message_bottom(usage, self.chatbot_client.chat_model_name, images)
-                await self.send_message_to_dingtalk(session_webhook, send_to, content)
-            else:
-                need_resend = ""
-                # organize iterable response
-                for content, is_end in _organize_iterable_response(iterable_reply):
-                    content = need_resend + content.rstrip()
-                    if is_end:
-                        content += _create_message_bottom(usage, self.chatbot_client.chat_model_name, images)
-                    success = await self.send_message_to_dingtalk(session_webhook, send_to, content)
-                    need_resend = "" if success else (need_resend + "\n\n" + content)
+            reply_once = (is_group_chat or (not chatbot_client.enable_streaming)
+                          or (not chatbot_client.supports_streaming_response))
 
-            print("Request chatbot server duration: {:.3f} s. Estimated completion Tokens: {}.".format(
+            need_resend = ""
+            # organize iterable response
+            for content, is_end in _organize_iterable_response(iterable_reply):
+                if is_end:
+                    content += _create_message_bottom(usage, chatbot_client.chat_model_name, images)
+
+                need_resend = (need_resend + content).strip()
+
+                if not reply_once:
+                    success = await self.send_message_to_dingtalk(session_webhook,
+                                                                  send_to,
+                                                                  need_resend,
+                                                                  chatbot_client.chat_model_name)
+                    need_resend = "" if success else (need_resend + "\n\n")
+
+            if len(need_resend) > 0:
+                success = await self.send_message_to_dingtalk(session_webhook,
+                                                              send_to,
+                                                              need_resend,
+                                                              chatbot_client.chat_model_name)
+                if not success:
+                    raise Exception("Message send failed : " + need_resend)
+
+            logging.info("Request chatbot server duration: {:.3f} s. Estimated completion Tokens: {}.".format(
                 (end_time - start_time), usage))
 
         except Exception as e:
             end_time = time.perf_counter()
-            print("Error Request chatbot server duration: {:.3f} s.".format((end_time - start_time)))
+            logging.error("Error Request chatbot server duration: {:.3f} s.".format((end_time - start_time)))
 
             if isinstance(e, ContextLengthExceededException):
                 await self.dingtalk_client.send_markdown(
@@ -292,14 +315,14 @@ class DingtalkMessageHandler(MessageHandler):
                     "<font color=silver>完，出错啦！暂时没法用咯…… 等会再试试吧 [傻笑] <br />(%s)" % str(e.args),
                     session_webhook)
 
-    async def send_message_to_dingtalk(self, session_webhook, send_to, content) -> bool:
-        print("[{}]->[{}]: {}".format(self.chatbot_client.chat_model_name, send_to,
+    async def send_message_to_dingtalk(self, session_webhook, send_to, content, chat_model_name) -> bool:
+        print("[{}]->[{}]: {}".format(chat_model_name, send_to,
                                       content.rstrip().replace("\n", "\n  | ")))
         try:
             await self.dingtalk_client.send_text(content, session_webhook)
         except Exception as e:
-            print("Send answer to dingtalk Failed,"
-                  "The current message failed to send and is waiting to be resent.", e.args)
+            logging.error("Send answer to dingtalk Failed,"
+                          "The current message failed to send and is waiting to be resent.", e.args)
             return False
         return True
 
@@ -311,6 +334,22 @@ class DingtalkMessageHandler(MessageHandler):
         :param message:
         :return message:
         """
+        is_group_chat = (message['conversationType'] == '2')
+        sender_nick = message['senderNick'] if not is_group_chat else ("[" + message['senderNick'] + "]")
+
+        # should one to one
+        userid = message['senderStaffId']
+        robot_code = message['robotCode']
+
+        if (not self.handlingGroupMessages) and is_group_chat:
+            await self.dingtalk_client.one_to_one_text("来，这边~ [坏笑]", robot_code, userid, app_key)
+            return _create_should_one_to_one_message()
+
+        # Do not rely on other messages
+        if 'originalProcessQueryKey' in message or 'originalMsgId' in message:
+            return _create_do_not_rely_other_message()
+
+        # check message type
         if message['msgtype'] == 'audio':
             print("[{}] sent a message of type 'audio'.  -> {}".format(
                 message['senderNick'], message['content']['recognition']))
@@ -369,22 +408,9 @@ class DingtalkMessageHandler(MessageHandler):
         elif message['msgtype'] != 'text':
             return _create_unknown_msgtype_message(message)
 
-        # should one to one
-        userid = message['senderStaffId']
-        robot_code = message['robotCode']
-
-        if (not self.handlingGroupMessages) and message['conversationType'] == '2':
-            await self.dingtalk_client.one_to_one_text("来，这边~ [坏笑]", robot_code, userid, app_key)
-            return _create_should_one_to_one_message()
-
-        # Do not rely on other messages
-        if 'originalProcessQueryKey' in message or 'originalMsgId' in message:
-            return _create_do_not_rely_other_message()
-
         # prepare to call
         session_webhook = message['sessionWebhook']
-        sender_nick = message['senderNick']
-        sender_content = message['text']['content']
+        sender_content = str(message['text']['content'])
 
         # Add to queue for processing.
         request = {
@@ -392,16 +418,17 @@ class DingtalkMessageHandler(MessageHandler):
             'send_to': sender_nick,
             'userid': userid,
             'robot_code': robot_code,
-            'content': sender_content
+            'content': sender_content,
+            'is_group_chat': is_group_chat
         }
 
         try:
             self.add_new_request_to_queue(session_webhook, request)
-            print("[{}]: {}".format(sender_nick, sender_content.replace("\n", "\n  | ")))
+            print("[{}]: {}".format(sender_nick, sender_content.rstrip().replace("\n", "\n  | ")))
         except ConcurrentRequestException as e:
-            print("[{}](忽略): {}".format(sender_nick, sender_content.replace("\n", "\n  | ")))
+            print("[{}](忽略): {}".format(sender_nick, sender_content.rstrip().replace("\n", "\n  | ")))
             processing_queued_request: QueuedRequest = e.args[1]
-            return _create_busy_message(processing_queued_request.parameters["message"])
+            return _create_busy_message(processing_queued_request.parameters["content"])
 
         return _create_empty_message()
 

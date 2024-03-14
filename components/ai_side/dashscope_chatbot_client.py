@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from http import HTTPStatus
 from typing import List, Iterable
 
@@ -11,10 +10,16 @@ from dashscope.api_entities.dashscope_response import MultiModalConversationResp
 from components.ai_side.chatbot_client import ChatBotClient, ChatMessage, TokenUsage, ChatBotServerType, ImageBlock, \
     DisabledMultiModalConversation
 
-logging.basicConfig(level=logging.WARN)
-
 
 class DashscopeChatBotClient(ChatBotClient):
+
+    @property
+    def supports_streaming_response(self) -> bool:
+        return False
+
+    @property
+    def has_multi_modal_ability(self) -> bool:
+        return True
 
     DEFAULT_SYSTEM_PROMPT = "你是达摩院的生活助手机器人。除非特别说明，请使用中文回复。"
 
@@ -32,6 +37,10 @@ class DashscopeChatBotClient(ChatBotClient):
                  enable_streaming: bool = None,
                  enable_multimodal: bool = None):
         super().__init__(api_key, base_url, model_name, preset_system_prompt, enable_streaming, enable_multimodal)
+
+        if self.base_url is not None:
+            logging.warning("The Dashscope ChatBot Client is currently unable "
+                            "to accommodate the customization of the base URL.")
 
     def completions(self, messages: List[ChatMessage], system: str = None) -> tuple[Iterable[str], TokenUsage]:
         chat_messages = [{

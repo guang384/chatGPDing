@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import logging
 import os
 import threading
 import time
@@ -9,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from components.ai_side.chatbot_client import ChatBotClient
+from components.ai_side.chatbot_client_builder import ChatBotClientBuilder
 from components.tools import is_true
 
 
@@ -29,7 +32,10 @@ class ConcurrentRequestException(Exception):
 class MessageHandler:
     DEFAULT_WORKER_THREADS = 4
 
-    def __init__(self, worker_threads: int = None):
+    def __init__(self,
+                 chatbot_client_builder: ChatBotClientBuilder,
+                 worker_threads: int = None):
+        self._chatbot_client_builder = chatbot_client_builder
         self.queue = Queue()
         self.stopped = False
         self.processing: dict[str, QueuedRequest] = {}  # 'Unique identifier' map to 'request being processed'
@@ -44,7 +50,7 @@ class MessageHandler:
 
         self.handlingGroupMessages = is_true(os.getenv(MessageHandlerEnv.ENABLE_GROUP_MESSAGES_HANDLING.value))
         if self.handlingGroupMessages:
-            print("Group message handling enabled. Server is now listening for messages from groups.")
+            logging.info("Group message handling enabled. Server is now listening for messages from groups.")
 
     def get_request_being_processed(self, unique_identifier: str) -> QueuedRequest:
         return self.processing[unique_identifier] if unique_identifier in self.processing else None
@@ -65,7 +71,8 @@ class MessageHandler:
 
     def start_workers(self):
         for i in range(self.worker_threads):
-            worker = threading.Thread(target=asyncio.run, args=(self._process_request_in_queue(i),))
+            worker = threading.Thread(target=asyncio.run,
+                                      args=(self._process_request_in_queue(i, self._chatbot_client_builder),))
             worker.start()
 
     def stop_workers(self):
@@ -74,30 +81,32 @@ class MessageHandler:
             self.queue.put({})
             time.sleep(0.001)
 
-    async def _process_request_in_queue(self, num) -> None:
-        print("Started Message processing Worker: #" + str(num))
+    async def _process_request_in_queue(self, num, chatbot_client_builder: ChatBotClientBuilder) -> None:
+        chatbot_client = chatbot_client_builder.build()
+        logging.info("Started Message processing Worker: #%d %s" % (num, chatbot_client))
+
         while not self.stopped:
             request: QueuedRequest = self.queue.get()
             if request == {}:
                 self.queue.task_done()
                 break
             # main logic
-            await self.process_request(request)
+            await self.process_request(request, chatbot_client)
 
             # remove processed
             del self.processing[request.unique_identifier]
 
             self.queue.task_done()
-        print("Stopped Message processing Worker: #" + str(num))
+        logging.info("Stopped Message processing Worker: #" + str(num))
 
     @abc.abstractmethod
-    async def process_request(self, request: QueuedRequest) -> None:
+    async def process_request(self, request: QueuedRequest, chatbot_client: ChatBotClient) -> None:
         raise NotImplementedError("process_request method not implemented")
 
 
 if __name__ == '__main__':
     class MyMessageHandler(MessageHandler):
-        async def process_request(self, request: QueuedRequest) -> None:
+        async def process_request(self, request: QueuedRequest, chatbot_client: ChatBotClient) -> None:
             print("Received:" + str(request))
 
 

@@ -5,12 +5,9 @@ import json
 import logging
 import os
 import time
-from http.client import HTTPException
 from urllib.parse import urlunparse, urlparse
 
 import aiohttp
-
-logging.basicConfig(level=logging.WARN)
 
 
 def _hmac_sha256_base64_encode(key, msg):
@@ -45,9 +42,8 @@ class DingtalkClient:
         if rewrite_pathname is None:
             self.rewrite_pathname = os.getenv("REWRITE_DINGTALK_PATHNAME")
         if self.rewrite_host is not None:
-            print("Rewrite the base URL of Dingtalk Server from %s to %s."
-                  % ("https://oapi.dingtalk.com/robot/sendBySession",
-                     self._rewrite_server_url("https://oapi.dingtalk.com/robot/sendBySession")))
+            logging.info("Dingtalk Server use base url: %s"
+                         % self._rewrite_server_url("https://oapi.dingtalk.com/robot/sendBySession"))
 
         if app_keys is None:
             self.app_keys = os.getenv("DINGTALK_APP_KEY")
@@ -61,11 +57,12 @@ class DingtalkClient:
             logging.error("Need to set environment variable: DINGTALK_APP_SECRET.")
             raise ValueError("You need to set a DingTalk App Secret")
 
-    def _rewrite_server_url(self, url):
+    def _rewrite_server_url(self, url) -> str:
         if self.rewrite_host is None or '/v1.0/' in url:  # the `V1` interface will require whitelist verification!
             return url
         parsed_url = urlparse(url)
-        return urlunparse(parsed_url._replace(netloc=self.rewrite_host, path=self.rewrite_pathname + parsed_url.path))
+        return str(urlunparse(parsed_url._replace(netloc=self.rewrite_host,
+                                                  path=self.rewrite_pathname + parsed_url.path)))
 
     def check_signature(self, timestamp, signature) -> str:
         """
@@ -79,7 +76,7 @@ class DingtalkClient:
             signed = _hmac_sha256_base64_encode(secret_key, contents)
             if signed == signature:
                 return self.app_keys.split(',')[index]
-        print("DINGTALK_APP_SECRET not right.", self.secret_keys)
+        logging.error("DINGTALK_APP_SECRET not right.", self.secret_keys)
         raise SystemError("DingTalk signature verification failed.")
 
     async def send_markdown(self, title, text, session_webhook):
@@ -137,7 +134,7 @@ class DingtalkClient:
 
         dingtalk_start_time = time.perf_counter()
         try:
-            print("Sending messages to {} ...".format(url))
+            logging.info("Sending messages to {} ...".format(url))
 
             payload = json.dumps(data)
             # https://open.dingtalk.com/document/orgapp/robot-message-types-and-data-format
@@ -145,7 +142,8 @@ class DingtalkClient:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, data=payload, headers=headers) as response:
                     dingtalk_end_time = time.perf_counter()
-                    print("Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
+                    logging.info(
+                        "Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
                     response_json = await response.json()
                     if 'errcode' in response_json and response_json['errcode'] != 0:  # old API response 'errcode'
                         raise RuntimeError(
@@ -154,17 +152,18 @@ class DingtalkClient:
                         raise RuntimeError(
                             "Error while call dingtalk :" + json.dumps(response_json, ensure_ascii=False))
                     elif 'processQueryKey' in response_json:  # new api (v1.0) has 'processQueryKey' when sent
-                        print('Message sent successfully - ', response_json['processQueryKey'])
+                        logging.info('Message sent successfully - %s' % response_json['processQueryKey'])
         except Exception as e:
             dingtalk_end_time = time.perf_counter()
-            print("Error Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
+            logging.error(
+                "Error Request duration: dingtalk {:.3f} s.".format((dingtalk_end_time - dingtalk_start_time)))
             raise e
 
     async def _refresh_access_token(self, app_key) -> str:
         if app_key not in self.access_token_expires or time.perf_counter() > self.access_token_expires[app_key]:
             api_url = self._rewrite_server_url("https://oapi.dingtalk.com/gettoken")
 
-            print("Refresh access_token {} ...".format(app_key))
+            logging.info("Refresh access_token {} ...".format(app_key))
             params = {
                 'appkey': app_key
             }
@@ -178,7 +177,7 @@ class DingtalkClient:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(api_url, params=params) as response:
                         dingtalk_access_token_end_time = time.perf_counter()
-                        print("Request duration: refresh access_token {:.3f} s.".format(
+                        logging.info("Request duration: refresh access_token {:.3f} s.".format(
                             (dingtalk_access_token_end_time - dingtalk_access_token_start_time)))
                         response_json = await response.json()
                         if response_json['errcode'] != 0:
@@ -188,7 +187,7 @@ class DingtalkClient:
                         self.access_token[app_key] = response_json['access_token']
             except Exception as e:
                 dingtalk_access_token_end_time = time.perf_counter()
-                print("Error Request duration:  refresh access_token {:.3f} s.".format(
+                logging.error("Error Request duration:  refresh access_token {:.3f} s.".format(
                     (dingtalk_access_token_end_time - dingtalk_access_token_start_time)))
                 raise e
         return self.access_token[app_key]
@@ -206,20 +205,20 @@ class DingtalkClient:
         }
         dingtalk_api_start_time = time.perf_counter()
         try:
-            print("Require  download url of [{}]{} ...".format(app_key, download_code))
+            logging.debug("Require  download url of [{}]{} ...".format(app_key, download_code))
             async with aiohttp.ClientSession() as session:
                 async with session.post(api_url, data=payload, headers=headers) as response:
                     dingtalk_api_end_time = time.perf_counter()
-                    print("Request duration: require download url {:.3f} s.".format(
+                    logging.info("Request duration: require download url {:.3f} s.".format(
                         (dingtalk_api_end_time - dingtalk_api_start_time)))
                     response_json = await response.json()
                     if 'downloadUrl' not in response_json:
                         raise RuntimeError("Error while require download url :" + json.dumps(response_json,
                                                                                              ensure_ascii=False))
-                    print("Required download url is [{}]{}".format(app_key, response_json['downloadUrl']))
+                    logging.debug("Required download url is [{}]{}".format(app_key, response_json['downloadUrl']))
                     return response_json['downloadUrl']
         except Exception as e:
             dingtalk_api_end_time = time.perf_counter()
-            print("Error Request duration: require download url {:.3f} s.".format(
+            logging.error("Error Request duration: require download url {:.3f} s.".format(
                 (dingtalk_api_end_time - dingtalk_api_start_time)))
             raise e
