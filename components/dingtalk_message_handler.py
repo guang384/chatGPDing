@@ -30,9 +30,10 @@ def _create_busy_message(content: str):
 def _create_unknown_msgtype_message(message):
     print("[{}] sent a message of type '{}'.  -> {}".format(message['senderNick'], message['msgtype'], message))
     return {
-        "msgtype": "text",
-        "text": {
-            "content": "我暂时无法理解这个类型的信息。"
+        "msgtype": "markdown",
+        "markdown": {
+            "title": "[惊愕] ！！！",
+            "text": "<font color=silver>这个类型的消息……是我认知的盲区[投降]"
         }
     }
 
@@ -48,14 +49,21 @@ def _create_do_not_rely_other_message():
 
 
 def _create_message_bottom(usage: TokenUsage, chat_model_name: str, file_names: List[str] = None):
-    usage_dict = {"in": usage.input_tokens, "out": usage.output_tokens}
-    if usage.image_tokens > 0:
-        usage_dict["img"] = usage.image_tokens
-
+    token_info = f" ↑ {usage.input_tokens}  ↓ {usage.output_tokens}  ▦ {usage.image_tokens} "
+    model_info = f"{chat_model_name}"
+    # When the model name is shorter, achieve a centering effect.
+    if len(model_info) < len(token_info):  #
+        len_diff = len(token_info) - len(model_info)
+        left_spaces = len_diff // 2
+        right_spaces = len_diff - left_spaces
+        if left_spaces > 2:
+            model_info = " " + '-' * (left_spaces - 2) + " " + model_info + " " + '-' * (right_spaces - 2) + " "
+        else:
+            model_info = '　' + model_info + '　'
     if file_names is None or len(file_names) == 0:
-        return f"\n\n( --- Used up {usage_dict} tokens. --- )\n( --- {chat_model_name} --- )"
+        return f"\n\n({token_info})\n({model_info})"
     else:
-        return f"\n\n( --- {file_names} --- )\n( --- Used up {usage_dict} tokens. --- )\n( --- {chat_model_name} --- )"
+        return f"\n\n{file_names}\n({token_info})\n({model_info})"
 
 
 def _create_empty_message():
@@ -365,11 +373,12 @@ class DingtalkMessageHandler(MessageHandler):
             file_path = download_file(image_url, self.download_dir)
             # process as normal text message
             message['text'] = {
-                "content": os.path.basename(file_path)
+                "content": os.path.basename(file_path) + " ?"
             }
 
         elif message['msgtype'] == 'richText':
             segments = []
+            has_text = False
             rich_text = message['content']['richText']
             for element in rich_text:
                 if 'type' in element and element['type'] == 'picture':
@@ -377,11 +386,13 @@ class DingtalkMessageHandler(MessageHandler):
                     image_url = await self.dingtalk_client.get_file_download_url(app_key, download_code)
                     file_path = download_file(image_url, self.download_dir)
                     segments.append(os.path.basename(file_path))
-                elif 'text' in element:
+                elif 'text' in element and len(str(element['text']).strip()) > 0:
+                    has_text = True
                     segments.append(element['text'])
                 # process as normal text message
                 message['text'] = {
-                    "content": ' '.join(segments)
+                    # Content blocks must contain non-whitespace text, you should put something in.
+                    "content": ' '.join(segments) if has_text else (' '.join(segments) + ' ?')
                 }
 
         elif message['msgtype'] == 'file':
