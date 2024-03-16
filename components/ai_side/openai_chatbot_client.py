@@ -161,11 +161,11 @@ class IterableMessageChunk:
             self.token_usage.output_tokens += self.chatbot_client.num_tokens_from_string(chunk_content)
             chunk_dict = dict(chunk)
             if 'usage' in chunk_dict and 'lastOne' in chunk_dict and chunk_dict['lastOne']:  # Adapting to 01.AI
-                self.token_usage.input_tokens = chunk_dict['usage']['completion_tokens']
-                self.token_usage.output_tokens = chunk_dict['usage']['prompt_tokens']
+                self.token_usage.input_tokens = chunk_dict['usage']['prompt_tokens']
+                self.token_usage.output_tokens = chunk_dict['usage']['completion_tokens']
             elif 'x_groq' in chunk_dict and 'usage' in chunk_dict['x_groq']:  # Adapting to Grok
-                self.token_usage.input_tokens = chunk_dict['x_groq']['usage']['completion_tokens']
-                self.token_usage.output_tokens = chunk_dict['x_groq']['usage']['prompt_tokens']
+                self.token_usage.input_tokens = chunk_dict['x_groq']['usage']['prompt_tokens']
+                self.token_usage.output_tokens = chunk_dict['x_groq']['usage']['completion_tokens']
 
             if chunk_content is not None and len(chunk_content) > 0:
                 return chunk_content
