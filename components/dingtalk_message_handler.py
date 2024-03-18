@@ -49,7 +49,7 @@ def _create_do_not_rely_other_message():
 
 
 def _create_message_bottom(usage: TokenUsage, chat_model_name: str, file_names: List[str] = None):
-    token_info = f" ↑ {usage.input_tokens}  ↓ {usage.output_tokens}  ▦ {usage.image_tokens} "
+    token_info = f" ▦ {usage.image_tokens} - ↑ {usage.input_tokens}  ↓ {usage.output_tokens} "
     model_info = f"{chat_model_name}"
     # When the model name is shorter, achieve a centering effect.
     if len(model_info) < len(token_info):  #
