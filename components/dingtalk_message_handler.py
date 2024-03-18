@@ -55,7 +55,7 @@ def _create_message_bottom(usage: TokenUsage, chat_model_name: str, file_names: 
     if len(model_info) < len(token_info):  #
         len_diff = len(token_info) - len(model_info)
         left_spaces = len_diff // 2
-        right_spaces = len_diff - left_spaces
+        right_spaces = left_spaces
         if left_spaces > 2:
             model_info = " " + '-' * (left_spaces - 2) + " " + model_info + " " + '-' * (right_spaces - 2) + " "
         else:
